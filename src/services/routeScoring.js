@@ -52,6 +52,7 @@ function forbiddenMetersOnRoute(forbiddenWays, coords, threshold = 10) {
 }
 
 function collectRouteSignals(near) {
+  let crossings = 0;
   let tactileYes = 0, tactileNo = 0, tactileUnknown = 0;
   let audioYes = 0, audioNo = 0;
   let kerbLow = 0, kerbHigh = 0, kerbUnknown = 0;
@@ -63,6 +64,7 @@ function collectRouteSignals(near) {
     const isSignalised = t.crossing === 'traffic_signals' || t.crossing === 'signals';
 
     if (isCrossing) {
+      crossings++;
       if (c.tactileYes) tactileYes++;
       else if (c.tactileNo) tactileNo++;
       else tactileUnknown++;
@@ -81,6 +83,7 @@ function collectRouteSignals(near) {
   }
 
   return {
+    crossings,
     tactileYes,
     tactileNo,
     tactileUnknown,

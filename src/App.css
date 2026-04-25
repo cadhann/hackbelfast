@@ -275,7 +275,7 @@
 .route-mode-title,
 .route-mode-subtitle,
 .route-mode-description,
-.route-mode-stats span,
+.route-mode-metric,
 .route-mode-reasons span {
   display: block;
 }
@@ -333,18 +333,42 @@
   line-height: 1.4;
 }
 
-.route-mode-stats {
+.route-mode-metrics {
+  border-top: 1px solid #e4e9ef;
   display: grid;
-  gap: 4px;
+  gap: 8px 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-top: 10px;
+  padding-top: 10px;
+}
+
+.route-mode-metric {
+  min-width: 0;
+}
+
+.route-mode-metric span {
+  color: #5a6573;
+  font-size: 11px;
+}
+
+.route-mode-metric strong {
+  display: block;
+  font-size: 13px;
+  margin-top: 1px;
+  overflow-wrap: anywhere;
 }
 
 .route-mode-reasons,
 .route-mode-detail-notes {
   display: grid;
-  gap: 4px;
+  gap: 6px;
   line-height: 1.4;
   margin-top: 10px;
+}
+
+.route-mode-reasons span {
+  border-left: 2px solid #b8c2cc;
+  padding-left: 8px;
 }
 
 .score-bar {

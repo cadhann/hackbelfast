@@ -1,5 +1,10 @@
 import { formatDistance, formatDuration } from '../utils/format';
 
+function formatAccessibilityScore(score) {
+  if (score === null) return 'Unknown';
+  return `${Math.round(score * 100)} / 100`;
+}
+
 export default function RouteModeCards({ modes, selectedModeId, onSelect }) {
   if (modes.length === 0) return null;
 
@@ -16,6 +21,7 @@ export default function RouteModeCards({ modes, selectedModeId, onSelect }) {
               type="button"
               className={`route-mode-card${selected ? ' selected' : ''}`}
               onClick={() => onSelect(mode.id)}
+              aria-pressed={selected}
             >
               <span className="route-mode-header">
                 <span>
@@ -34,18 +40,26 @@ export default function RouteModeCards({ modes, selectedModeId, onSelect }) {
               <span className="route-mode-description">{mode.description}</span>
               {s && (
                 <>
-                  <span className="route-mode-stats">
-                    <span><strong>{formatDistance(s.route.distance)}</strong> distance</span>
-                    <span><strong>{formatDuration(s.route.duration)}</strong> walk</span>
-                    <span>
-                      <strong>{s.blocked ? 'excluded' : formatDistance(mode.effectiveLength)}</strong> mode score
+                  <span className="route-mode-metrics" aria-label={`${mode.title} metrics`}>
+                    <span className="route-mode-metric">
+                      <span>Distance</span>
+                      <strong>{formatDistance(s.route.distance)}</strong>
                     </span>
-                    {s.forbiddenMeters > 0 && (
-                      <span><strong>{formatDistance(s.forbiddenMeters)}</strong> near restricted ways</span>
-                    )}
+                    <span className="route-mode-metric">
+                      <span>Time</span>
+                      <strong>{formatDuration(s.route.duration)}</strong>
+                    </span>
+                    <span className="route-mode-metric">
+                      <span>Crossings</span>
+                      <strong>{s.signals.crossings || 0}</strong>
+                    </span>
+                    <span className="route-mode-metric">
+                      <span>Access score</span>
+                      <strong>{formatAccessibilityScore(s.score)}</strong>
+                    </span>
                   </span>
                   <span className="route-mode-reasons">
-                    {mode.reasons.map(reason => <span key={reason}>• {reason}</span>)}
+                    {mode.reasons.map(reason => <span key={reason}>{reason}</span>)}
                   </span>
                 </>
               )}

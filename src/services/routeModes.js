@@ -42,39 +42,98 @@ function hasAccessibilityEvidence(routeAnalyses) {
   });
 }
 
+function formatAccessibilityScore(score) {
+  if (score === null) return 'unknown';
+  return `${Math.round(score * 100)} / 100`;
+}
+
+function pluralize(count, singular, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function getCrossingCount(scoredRoute) {
+  return scoredRoute.signals.crossings || 0;
+}
+
+function buildSelectionReason(mode, context) {
+  if (!context.hasAccessibilityEvidence && mode.id !== 'fastest') {
+    return 'No accessibility lookup data returned, so this mode falls back to distance-only ranking.';
+  }
+  if (context.sameAsFastest && context.allModesUseSameRoute) {
+    return 'Same path as Fastest because the direct route also scores best for accessibility.';
+  }
+  if (context.sameAsFastest) {
+    return 'Same path as Fastest because no accessible alternative scores better overall.';
+  }
+  if (mode.id === 'fastest') {
+    return 'Chooses the shortest walking route before applying accessibility preferences.';
+  }
+  if (mode.id === 'balanced') {
+    return 'Balances distance with the selected accessibility preferences.';
+  }
+  return 'Prioritizes the selected accessibility preferences, even when the route is longer.';
+}
+
+function buildScoreReason(scoredRoute) {
+  const crossings = getCrossingCount(scoredRoute);
+  if (scoredRoute.score !== null && crossings > 0) {
+    return `${pluralize(crossings, 'crossing')} checked; known map tags give an accessibility score of ${formatAccessibilityScore(scoredRoute.score)}.`;
+  }
+  if (scoredRoute.score !== null) {
+    return `No crossings were found, but nearby kerb or access tags give an accessibility score of ${formatAccessibilityScore(scoredRoute.score)}.`;
+  }
+  if (crossings > 0) {
+    return `${pluralize(crossings, 'crossing')} checked, but tactile, audio, and kerb tags are too sparse for a score.`;
+  }
+  return 'No nearby crossings were found in the map data, so the accessibility score is unknown.';
+}
+
+function buildSignalReason(scoredRoute) {
+  const signals = scoredRoute.signals;
+  const helpful = signals.tactileYes + signals.audioYes + signals.kerbLow;
+  const difficult = signals.tactileNo + signals.audioNo + signals.kerbHigh;
+  const unknown = signals.tactileUnknown + signals.kerbUnknown;
+
+  if (helpful > 0 && difficult > 0) {
+    return `${pluralize(helpful, 'supportive tag')} and ${pluralize(difficult, 'missing or difficult tag')} pull the score in opposite directions.`;
+  }
+  if (helpful > 0) {
+    return `${pluralize(helpful, 'supportive tag')} such as tactile paving, audio signals, or lowered kerbs improve the score.`;
+  }
+  if (difficult > 0) {
+    return `${pluralize(difficult, 'missing or difficult tag')} such as absent tactile paving or raised kerbs lower the score.`;
+  }
+  if (unknown > 0) {
+    return `${pluralize(unknown, 'nearby feature')} need better tagging, so the score stays cautious.`;
+  }
+  return null;
+}
+
+function buildExposureReason(scoredRoute) {
+  if (scoredRoute.blocked) {
+    return `Only restricted candidates are available; this one has ${Math.round(scoredRoute.forbiddenMeters)} m flagged.`;
+  }
+  if (scoredRoute.forbiddenMeters > 0 && scoredRoute.busyMeters > 0) {
+    return `${formatDistance(scoredRoute.forbiddenMeters)} near restricted ways and ${formatDistance(scoredRoute.busyMeters)} near busy roads add risk.`;
+  }
+  if (scoredRoute.forbiddenMeters > 0) {
+    return `${formatDistance(scoredRoute.forbiddenMeters)} runs near restricted ways, which lowers accessibility confidence.`;
+  }
+  if (scoredRoute.busyMeters > 0) {
+    return `${formatDistance(scoredRoute.busyMeters)} runs near busy roads, which matters when avoiding traffic exposure.`;
+  }
+  return 'No restricted-way proximity was detected on this candidate.';
+}
+
 function buildModeReasons(scoredRoute, mode, context) {
   if (!scoredRoute) return [];
 
-  const reasons = [];
-  if (!context.hasAccessibilityEvidence && mode.id !== 'fastest') {
-    reasons.push('No accessibility lookup data returned, so this mode falls back to distance-only ranking.');
-  } else if (context.sameAsFastest && context.allModesUseSameRoute) {
-    reasons.push('Same path as Fastest here because the direct candidate also wins the accessibility scoring.');
-  } else if (context.sameAsFastest) {
-    reasons.push('Same path as Fastest here because no accessible alternative beats the direct route.');
-  } else if (mode.id === 'fastest') {
-    reasons.push('Chooses the shortest available walking route.');
-  } else if (mode.id === 'balanced') {
-    reasons.push('Balances directness with accessibility preferences.');
-  } else {
-    reasons.push('Applies the full accessibility preference weighting.');
-  }
-
-  if (scoredRoute.blocked) {
-    reasons.push(`Only restricted candidates available; this one has ${Math.round(scoredRoute.forbiddenMeters)} m flagged.`);
-  }
-
-  if (scoredRoute.score !== null) {
-    reasons.push(`Accessibility confidence ${Math.round(scoredRoute.score * 100)} / 100 from nearby known features.`);
-  } else {
-    reasons.push('Accessibility confidence is unknown because nearby feature data is sparse.');
-  }
-
-  if (scoredRoute.busyMeters > 0) {
-    reasons.push(`${formatDistance(scoredRoute.busyMeters)} near busy roads.`);
-  }
-
-  return reasons.slice(0, 4);
+  return [
+    buildSelectionReason(mode, context),
+    buildScoreReason(scoredRoute),
+    buildSignalReason(scoredRoute),
+    buildExposureReason(scoredRoute)
+  ].filter(Boolean).slice(0, 4);
 }
 
 export function buildRouteModes(routeAnalyses, preferences) {
