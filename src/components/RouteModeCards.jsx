@@ -36,6 +36,9 @@ export default function RouteModeCards({ modes, selectedModeId, onSelect }) {
                     <span>Score {formatAccessibilityScore(s.score)}</span>
                   </div>
                   <div className="mode-card-sub">{mode.shortLabel}</div>
+                  {mode.sameAsFastest && (
+                    <div className="mode-card-flag">Same path as Fastest</div>
+                  )}
                 </>
               ) : (
                 <div className="mode-card-meta">No candidate</div>

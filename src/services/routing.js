@@ -5,19 +5,7 @@ import { friendlyFetchError } from './http';
 const DEMO_CORRIDOR_MATCH_METERS = 180;
 const DEMO_WALKING_METERS_PER_SECOND = 1.25;
 
-async function fetchOsrm(coords) {
-  const path = coords.map(c => `${c.lng},${c.lat}`).join(';');
-  const url = `https://router.project-osrm.org/route/v1/foot/${path}?overview=full&geometries=geojson&steps=true`;
-  let res;
-  try {
-    res = await fetch(url);
-  } catch (e) {
-    throw new Error(`Routing service unreachable: ${friendlyFetchError(e)}`);
-  }
-  if (!res.ok) throw new Error(`Routing failed (${res.status})`);
-  const data = await res.json();
-  if (!data.routes || data.routes.length === 0) throw new Error('No route found');
-  const r = data.routes[0];
+function osrmRouteToShape(r) {
   const steps = [];
   for (const leg of r.legs || []) {
     for (const step of leg.steps || []) {
@@ -38,14 +26,30 @@ async function fetchOsrm(coords) {
   };
 }
 
+async function fetchOsrm(coords, { alternatives = false } = {}) {
+  const path = coords.map(c => `${c.lng},${c.lat}`).join(';');
+  const altParam = alternatives ? '&alternatives=3' : '';
+  const url = `https://router.project-osrm.org/route/v1/foot/${path}?overview=full&geometries=geojson&steps=true${altParam}`;
+  let res;
+  try {
+    res = await fetch(url);
+  } catch (e) {
+    throw new Error(`Routing service unreachable: ${friendlyFetchError(e)}`);
+  }
+  if (!res.ok) throw new Error(`Routing failed (${res.status})`);
+  const data = await res.json();
+  if (!data.routes || data.routes.length === 0) throw new Error('No route found');
+  return data.routes.map(osrmRouteToShape);
+}
+
 function routeFingerprint(coords) {
   if (coords.length === 0) return '';
-  const samples = 12;
+  const samples = 16;
   const step = Math.max(1, Math.floor(coords.length / samples));
   const parts = [];
   for (let i = 0; i < coords.length; i += step) {
     const [lat, lon] = coords[i];
-    parts.push(`${lat.toFixed(3)},${lon.toFixed(3)}`);
+    parts.push(`${lat.toFixed(4)},${lon.toFixed(4)}`);
   }
   return parts.join('|');
 }
@@ -111,8 +115,8 @@ function pickPrimaryError(settled) {
 export async function fetchRoutes(start, end, { signal } = {}) {
   if (signal?.aborted) throw new Error('Request cancelled');
   const offsets = [0, 600, -600, 1200, -1200, 2000, -2000];
-  const tasks = offsets.map(off => {
-    if (off === 0) return fetchOsrm([start, end]);
+  const tasks = offsets.map((off, idx) => {
+    if (off === 0) return fetchOsrm([start, end], { alternatives: true });
     const via = offsetWaypoint(start, end, off);
     if (!via) return Promise.reject(new Error('bad offset'));
     return fetchOsrm([start, via, end]);
@@ -120,7 +124,7 @@ export async function fetchRoutes(start, end, { signal } = {}) {
   const settled = await Promise.allSettled(tasks);
   if (signal?.aborted) throw new Error('Request cancelled');
 
-  const ok = settled.filter(s => s.status === 'fulfilled').map(s => s.value);
+  const ok = settled.filter(s => s.status === 'fulfilled').flatMap(s => s.value);
   if (ok.length === 0) {
     const demoRoutes = getDemoRouteCandidates(start, end);
     if (demoRoutes.length > 0) return demoRoutes;

@@ -259,13 +259,25 @@ export default function App() {
     closeSearches();
   };
 
-  const peekContent = chosen ? (
+  const candidateCount = routeAnalyses.length;
+  const peekContent = loading ? (
+    <div className="sheet-peek-summary muted">
+      <div className="sheet-peek-time">Routing…</div>
+      <div className="sheet-peek-meta">Finding accessible alternatives</div>
+    </div>
+  ) : chosen ? (
     <div className="sheet-peek-summary">
       <div className="sheet-peek-time">{formatDuration(chosen.route.duration)}</div>
       <div className="sheet-peek-meta">
         <span>{formatDistance(chosen.route.distance)}</span>
         <span className="dot">·</span>
         <span>{selectedMode?.title || 'Route'}</span>
+        {candidateCount > 0 && (
+          <>
+            <span className="dot">·</span>
+            <span>{candidateCount} option{candidateCount === 1 ? '' : 's'}</span>
+          </>
+        )}
       </div>
     </div>
   ) : (
@@ -324,6 +336,31 @@ export default function App() {
           onSelectDestination={selectDestination}
           onSwap={swapPoints}
         />
+        {loading && (
+          <div className="route-status routing" role="status">
+            <span className="status-spinner" aria-hidden="true" />
+            <span className="status-text">Routing… finding accessible options</span>
+          </div>
+        )}
+        {!loading && start && end && chosen && (
+          <button
+            type="button"
+            className="route-status ready"
+            onClick={() => computeRoute(start, end, { force: true })}
+            aria-label="Reroute with current preferences"
+          >
+            <span className="status-icon" aria-hidden="true">↻</span>
+            <span className="status-text">
+              Route ready · tap to <strong>reroute</strong>
+            </span>
+          </button>
+        )}
+        {!loading && start && end && !chosen && !error && (
+          <div className="route-status pending" role="status">
+            <span className="status-icon" aria-hidden="true">…</span>
+            <span className="status-text">Waiting for route</span>
+          </div>
+        )}
         {(error || warning || allBlocked) && (
           <div className="banner-stack">
             {error && <div className="banner banner-error" role="alert">{error}</div>}
@@ -338,16 +375,6 @@ export default function App() {
       </div>
 
       <div className="fab-stack">
-        <button
-          type="button"
-          className="fab"
-          onClick={() => computeRoute(start, end, { force: true })}
-          disabled={!start || !end || loading}
-          aria-label="Recompute route"
-          title="Recompute"
-        >
-          <span aria-hidden="true">{loading ? '…' : '↻'}</span>
-        </button>
         <button
           type="button"
           className="fab"

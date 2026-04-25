@@ -275,6 +275,50 @@ html, body, #root {
   color: var(--gm-text-muted);
 }
 
+/* ===== Routing status strip ===== */
+.route-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: var(--gm-radius);
+  padding: 10px 14px;
+  font-size: 13px;
+  box-shadow: var(--gm-shadow-1);
+  font-family: inherit;
+  border: 0;
+  width: 100%;
+  text-align: left;
+}
+.route-status.routing {
+  background: #e8f0fe;
+  color: var(--gm-blue-dark);
+}
+.route-status.ready {
+  background: var(--gm-bg);
+  color: var(--gm-text);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.route-status.ready:hover { background: var(--gm-surface); }
+.route-status.ready strong { color: var(--gm-blue); font-weight: 600; }
+.route-status.pending {
+  background: var(--gm-surface);
+  color: var(--gm-text-muted);
+}
+.status-icon { font-size: 16px; line-height: 1; }
+.status-text { line-height: 1.3; }
+
+.status-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(26,115,232,0.25);
+  border-top-color: var(--gm-blue);
+  border-radius: 50%;
+  animation: status-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes status-spin { to { transform: rotate(360deg); } }
+
 /* ===== Banners ===== */
 .banner-stack { display: flex; flex-direction: column; gap: 6px; }
 .banner {
@@ -480,6 +524,16 @@ html, body, #root {
   color: var(--gm-text-muted);
   margin-top: 6px;
   font-style: italic;
+}
+.mode-card-flag {
+  margin-top: 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #7a5d00;
+  background: #fef7e0;
+  border-radius: 6px;
+  padding: 4px 8px;
+  display: inline-block;
 }
 
 /* ===== Pref chips ===== */
