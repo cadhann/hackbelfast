@@ -1,8 +1,18 @@
 import { formatDistance, formatDuration } from '../utils/format';
 
-function formatScore(score) {
-  if (score === null || score === undefined) return '—';
-  return `${Math.round(score * 100)}`;
+function scoreClass(score) {
+  if (score == null) return '';
+  if (score >= 0.68) return 'good';
+  if (score >= 0.42) return 'fair';
+  return 'low';
+}
+
+function scoreLabel(score) {
+  if (score == null) return null;
+  const p = Math.round(score * 100);
+  if (p >= 68) return `♿ ${p}`;
+  if (p >= 42) return `♿ ${p}`;
+  return `♿ ${p}`;
 }
 
 export default function RouteModeCards({
@@ -24,7 +34,6 @@ export default function RouteModeCards({
   }
 
   const visible = candidates.map((c, i) => ({ c, i })).filter(({ c }) => !c.blocked);
-
   if (visible.length === 0) return null;
 
   return (
@@ -35,9 +44,12 @@ export default function RouteModeCards({
 
       <div className="route-options">
         {visible.map(({ c, i }) => {
-          const isSelected = i === selectedIndex;
+          const isSelected    = i === selectedIndex;
           const isRecommended = i === recommendedIndex;
-          const picks = modePicksByIndex.get(i) || [];
+          const picks         = modePicksByIndex.get(i) || [];
+          const sc            = scoreLabel(c.score);
+          const cls           = scoreClass(c.score);
+
           return (
             <button
               key={i}
@@ -51,8 +63,17 @@ export default function RouteModeCards({
                 <div className="route-option-time">{formatDuration(c.route.duration)}</div>
                 <div className="route-option-meta">
                   <span>{formatDistance(c.route.distance)}</span>
-                  <span className="mode-dot" aria-hidden="true">·</span>
-                  <span>Score {formatScore(c.score)}</span>
+                  {sc && (
+                    <>
+                      <span className="mode-dot" aria-hidden="true">·</span>
+                      <span
+                        className={`route-score-badge ${cls}`}
+                        aria-label={`Accessibility score ${Math.round((c.score || 0) * 100)} out of 100`}
+                      >
+                        {sc}
+                      </span>
+                    </>
+                  )}
                 </div>
                 {picks.length > 0 && (
                   <div className="route-option-tags">
@@ -63,9 +84,9 @@ export default function RouteModeCards({
                 )}
               </div>
               <div className="route-option-side">
-                {isRecommended && !c.blocked && <span className="route-pill recommended">Recommended</span>}
-                {isSelected && !c.blocked && <span className="route-pill selected">Selected</span>}
-                {c.blocked && <span className="route-pill warn">Restricted</span>}
+                {isRecommended && !c.blocked && <span className="route-pill recommended">Best match</span>}
+                {isSelected    && !c.blocked && <span className="route-pill selected">Selected</span>}
+                {c.blocked                   && <span className="route-pill warn">Restricted</span>}
               </div>
             </button>
           );

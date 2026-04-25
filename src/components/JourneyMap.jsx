@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, Polyline, CircleMarker, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { BELFAST, BELFAST_BOUNDS } from '../config/map';
@@ -92,6 +92,29 @@ function MapSizeFix() {
   return null;
 }
 
+// Pans the map to follow the user's GPS position during active navigation.
+// Only moves the map when the user has moved more than 3 m to avoid jitter.
+function MapFollower({ position, follow }) {
+  const map = useMap();
+  const prevRef = useRef(null);
+  useEffect(() => {
+    if (!follow || !position) return;
+    if (prevRef.current) {
+      const moved = haversine(
+        [position.lat, position.lng],
+        [prevRef.current.lat, prevRef.current.lng]
+      );
+      if (moved < 3) return;
+    }
+    prevRef.current = position;
+    map.setView([position.lat, position.lng], Math.max(map.getZoom(), 17), {
+      animate: true,
+      duration: 0.5,
+    });
+  }, [position, follow, map]);
+  return null;
+}
+
 function FeatureMarker({ el }) {
   const c = classifyFeature(el);
   const tags = el.tags || {};
@@ -149,9 +172,8 @@ function SupportMarker({ feature, kind }) {
   );
 }
 
-export default function JourneyMap({ hint, loading, start, end, scored, chosen, chosenIndex, onMapClick }) {
+export default function JourneyMap({ hint, loading, start, end, scored, chosen, chosenIndex, onMapClick, userPosition, followUser }) {
   const supportMarkers = useMemo(() => buildSupportMarkers(chosen), [chosen]);
-
   return (
     <div className="map-area">
       {hint && <div className="map-hint">{hint}</div>}
@@ -174,6 +196,7 @@ export default function JourneyMap({ hint, loading, start, end, scored, chosen, 
           bounds={BELFAST_BOUNDS}
         />
         <MapSizeFix />
+        <MapFollower position={userPosition} follow={followUser} />
         <ClickHandler onClick={onMapClick} />
         {scored.map((s, i) => i !== chosenIndex && (
           <Polyline
@@ -198,6 +221,23 @@ export default function JourneyMap({ hint, loading, start, end, scored, chosen, 
         {supportMarkers.map(item => (
           <SupportMarker key={`${item.kind}-${item.feature.id}`} feature={item} kind={item.kind} />
         ))}
+        {/* Live GPS position — outer ring + inner dot */}
+        {userPosition && (
+          <>
+            <CircleMarker
+              center={[userPosition.lat, userPosition.lng]}
+              radius={20}
+              pathOptions={{ color: '#1a73e8', fillColor: '#1a73e8', fillOpacity: 0.12, weight: 0 }}
+            />
+            <CircleMarker
+              center={[userPosition.lat, userPosition.lng]}
+              radius={8}
+              pathOptions={{ color: '#ffffff', fillColor: '#1a73e8', fillOpacity: 1, weight: 2.5 }}
+            >
+              <Popup>Your location</Popup>
+            </CircleMarker>
+          </>
+        )}
         {start && (
           <CircleMarker
             center={[start.lat, start.lng]}

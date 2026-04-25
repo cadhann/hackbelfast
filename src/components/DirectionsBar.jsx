@@ -53,7 +53,7 @@ export default function DirectionsBar({
             className="dir-input"
             type="search"
             value={startQuery}
-            placeholder={selectedStart ? selectedStart.name : (start ? `${start.lat.toFixed(4)}, ${start.lng.toFixed(4)}` : 'Choose starting point, or click on the map')}
+            placeholder={start ? (selectedStart?.name || 'Map pin') : 'Starting point'}
             autoComplete="off"
             onChange={(e) => onStartChange(e.target.value)}
             onFocus={onStartFocus}
@@ -72,7 +72,7 @@ export default function DirectionsBar({
             className="dir-input"
             type="search"
             value={destinationQuery}
-            placeholder={selectedDestination ? selectedDestination.name : (end ? `${end.lat.toFixed(4)}, ${end.lng.toFixed(4)}` : 'Choose destination')}
+            placeholder={end ? (selectedDestination?.name || 'Map pin') : 'Where to?'}
             autoComplete="off"
             onChange={(e) => onDestChange(e.target.value)}
             onFocus={onDestFocus}

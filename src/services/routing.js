@@ -9,12 +9,15 @@ function normalizeRoute(route) {
   const steps = [];
   for (const leg of route.legs || []) {
     for (const step of leg.steps || []) {
+      // OSRM returns maneuver.location as [lng, lat]; we store as [lat, lng]
+      const loc = step.maneuver?.location;
       steps.push({
         distance: step.distance,
         duration: step.duration,
         name: step.name,
         instruction: step.maneuver?.type || '',
-        modifier: step.maneuver?.modifier || ''
+        modifier: step.maneuver?.modifier || '',
+        location: loc ? [loc[1], loc[0]] : null,
       });
     }
   }

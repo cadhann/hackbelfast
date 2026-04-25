@@ -1,11 +1,59 @@
+import { useState } from 'react';
 import { formatDistance, formatDuration } from '../utils/format';
 import TurnByTurn from './TurnByTurn';
 
-function Stat({ label, value }) {
+function scoreGrade(score) {
+  if (score == null) return null;
+  const p = Math.round(score * 100);
+  if (p >= 68) return { label: 'Great for most users',     bg: '#ECFDF5', color: '#065F46' };
+  if (p >= 42) return { label: 'Some barriers present',    bg: '#FEF3C7', color: '#92400E' };
+  return       { label: 'Notable accessibility barriers',  bg: '#FEF2F2', color: '#991B1B' };
+}
+
+function buildFeatureChips(chosen, featureStats) {
+  const chips = [];
+
+  if (featureStats.tactileYes > 0) {
+    chips.push({ sym: '✓', text: `${featureStats.tactileYes} tactile crossings`, type: 'good' });
+  } else if (featureStats.crossings > 0) {
+    chips.push({ sym: '~', text: `${featureStats.crossings} crossings`, type: 'neutral' });
+  }
+
+  if ((chosen.stepsMeters || 0) > 5) {
+    chips.push({ sym: '!', text: `${Math.round(chosen.stepsMeters)}m steps`, type: 'bad' });
+  }
+
+  if (featureStats.lowKerbs > 0) {
+    chips.push({ sym: '✓', text: `${featureStats.lowKerbs} low kerbs`, type: 'good' });
+  }
+
+  const litM   = chosen.litMeters   || 0;
+  const unlitM = chosen.unlitMeters || 0;
+  if (litM > 0 || unlitM > 0) {
+    chips.push(
+      litM > unlitM
+        ? { sym: '◉', text: 'Well lit',                        type: 'good' }
+        : { sym: '◑', text: `${Math.round(unlitM)}m unlit`,    type: 'warn' }
+    );
+  }
+
+  if ((chosen.narrowMeters || 0) > 10) {
+    chips.push({ sym: '↔', text: `${Math.round(chosen.narrowMeters)}m narrow`, type: 'warn' });
+  }
+
+  if ((chosen.busyMeters || 0) > 20) {
+    chips.push({ sym: '⊗', text: `${Math.round(chosen.busyMeters)}m busy road`, type: 'warn' });
+  }
+
+  return chips;
+}
+
+// A single metric card in the breakdown grid
+function StatCell({ label, value, variant }) {
   return (
-    <div className="stat-row">
-      <span className="stat-label">{label}</span>
-      <span className="stat-value">{value}</span>
+    <div className={`rh-cell${variant ? ` rh-cell--${variant}` : ''}`}>
+      <span className="rh-cell-value">{value ?? '—'}</span>
+      <span className="rh-cell-label">{label}</span>
     </div>
   );
 }
@@ -51,147 +99,126 @@ function DetailList({ title, items }) {
 }
 
 export default function RouteDetails({ chosen, selectedMode, featureStats, filters }) {
+  const [expanded, setExpanded] = useState(false);
   if (!chosen || !selectedMode) return null;
 
-  const evidence = chosen.evidenceSummary || {};
-  const hasEvidenceSummary = [evidence.known, evidence.reported, evidence.unknown].some(value => value > 0);
-  const hasEnvironmentDetail = (
-    chosen.decisionPoints > 0 ||
-    chosen.roughMeters > 0 ||
-    chosen.steepMeters > 0 ||
-    chosen.reportCount > 0 ||
-    chosen.toiletCount > 0 ||
-    chosen.seatingCount > 0 ||
-    chosen.accessibleStationCount > 0 ||
-    Number.isFinite(chosen.nearestToiletMeters) ||
-    Number.isFinite(chosen.nearestSeatingMeters) ||
-    Number.isFinite(chosen.nearestStationMeters)
-  );
-  const nearbySupportItems = [
-    ...(chosen.toiletsNear || []).map(item => ({
-      id: `toilet-${item.id}`,
-      label: 'Toilet',
-      title: getItemName(item, 'Nearby toilet'),
-      note: getItemNote(item)
-    })),
-    ...(chosen.seatingNear || []).map(item => ({
-      id: `seat-${item.id}`,
-      label: 'Seating',
-      title: getItemName(item, 'Nearby seating'),
-      note: getItemNote(item)
-    })),
-    ...(chosen.stationAccessNear || []).map(item => ({
-      id: `station-${item.id}`,
-      label: 'Station access',
-      title: getItemName(item, 'Nearby station access'),
-      note: getItemNote(item)
-    }))
-  ].slice(0, 6);
-  const nearbyReportItems = (chosen.communityReportsNear || []).map(item => ({
-    id: `report-${item.id}`,
-    label: item.verification === 'verified' || item.tags?.report_verification === 'verified' ? 'Verified report' : 'User report',
-    title: getItemName(item, 'Accessibility report'),
-    note: getItemNote(item)
-  })).slice(0, 4);
+  const score    = chosen.score;
+  const scorePct = score != null ? Math.round(score * 100) : null;
+  const grade    = scoreGrade(score);
+  const chips    = buildFeatureChips(chosen, featureStats);
 
   return (
     <>
       <div className="details-section">
-        <div className="section-title">{selectedMode.title} detail</div>
-        <div className="details-card">
-          <Stat label="Mode" value={selectedMode.shortLabel} />
-          <Stat label="Distance" value={formatDistance(chosen.route.distance)} />
-          <Stat label="Walking time" value={formatDuration(chosen.route.duration)} />
-          <Stat label="Crossings near route" value={featureStats.crossings} />
-          <Stat label="Tactile paving (yes)" value={featureStats.tactileYes} />
-          <Stat label="Tactile paving (no)" value={featureStats.tactileNo} />
-          <Stat label="Low / flush kerbs" value={featureStats.lowKerbs} />
-          {filters.avoid_busy && <Stat label="Busy-road meters" value={`${Math.round(chosen.busyMeters)} m`} />}
-          {(filters.avoid_steps || chosen.stepsMeters > 0) && (
-            <Stat label="Steps along route" value={`${Math.round(chosen.stepsMeters || 0)} m`} />
-          )}
-          {(filters.pavement_width || chosen.narrowMeters > 0) && (
-            <Stat label="Narrow pavement (< 1.5 m)" value={`${Math.round(chosen.narrowMeters || 0)} m`} />
-          )}
-          {filters.streetlights && (
-            <>
-              <Stat label="Lit segments" value={`${Math.round(chosen.litMeters || 0)} m`} />
-              <Stat label="Unlit segments" value={`${Math.round(chosen.unlitMeters || 0)} m`} />
-              <Stat label="Street lamps nearby" value={chosen.streetLampCount || 0} />
-            </>
-          )}
-          {chosen.forbiddenMeters > 0 && (
-            <Stat label="Restricted-way proximity" value={`${Math.round(chosen.forbiddenMeters)} m`} />
-          )}
-          {hasEnvironmentDetail && (
-            <>
-              <div className="detail-subsection-title">Route conditions</div>
-              {chosen.decisionPoints > 0 && (
-                <Stat label="Decision points" value={chosen.decisionPoints} />
-              )}
-              {chosen.decisionPoints > 0 && chosen.complexityBand && (
-                <Stat label="Route complexity" value={chosen.complexityBand} />
-              )}
-              {chosen.roughMeters > 0 && (
-                <Stat label="Rough / uneven surface" value={`${Math.round(chosen.roughMeters)} m`} />
-              )}
-              {chosen.steepMeters > 0 && (
-                <Stat label="Steeper segments" value={`${Math.round(chosen.steepMeters)} m`} />
-              )}
-              {(chosen.toiletCount > 0 || Number.isFinite(chosen.nearestToiletMeters)) && (
-                <Stat
-                  label="Toilets near route"
-                  value={`${chosen.toiletCount || 0}${Number.isFinite(chosen.nearestToiletMeters) ? ` · nearest ${formatOptionalDistance(chosen.nearestToiletMeters)}` : ''}`}
-                />
-              )}
-              {(chosen.seatingCount > 0 || Number.isFinite(chosen.nearestSeatingMeters)) && (
-                <Stat
-                  label="Seating / rest points"
-                  value={`${chosen.seatingCount || 0}${Number.isFinite(chosen.nearestSeatingMeters) ? ` · nearest ${formatOptionalDistance(chosen.nearestSeatingMeters)}` : ''}`}
-                />
-              )}
-              {(chosen.accessibleStationCount > 0 || Number.isFinite(chosen.nearestStationMeters)) && (
-                <Stat
-                  label="Accessible station links"
-                  value={`${chosen.accessibleStationCount || 0}${Number.isFinite(chosen.nearestStationMeters) ? ` · nearest ${formatOptionalDistance(chosen.nearestStationMeters)}` : ''}`}
-                />
-              )}
-              {chosen.reportCount > 0 && (
-                <Stat
-                  label="Accessibility reports"
-                  value={`${chosen.reportCount}${chosen.verifiedReportCount ? ` · ${chosen.verifiedReportCount} verified` : ''}${chosen.reportedReportCount ? ` · ${chosen.reportedReportCount} recent user reports` : ''}`}
-                />
-              )}
-            </>
-          )}
-          {chosen.score !== null && (
-            <>
-              <div className="detail-subsection-title">Accessibility score</div>
-              <div className="stat-row" style={{ marginTop: 0 }}>
-                <span className="stat-label">Accessibility score</span>
-                <span className="stat-value">{Math.round(chosen.score * 100)} / 100</span>
+        <div className="section-title">Route health</div>
+
+        {/* ── Score spectrum ─────────────────────────────── */}
+        {scorePct != null && (
+          <div className="rh-card" style={{ background: grade.bg }}>
+            <div className="rh-score-row">
+              <div>
+                <span className="rh-score-num" style={{ color: grade.color }}>
+                  {scorePct}
+                </span>
+                <span className="rh-score-of" style={{ color: grade.color }}>/100</span>
               </div>
-              <div className="score-bar" aria-hidden="true">
-                <div className="score-fill" style={{ width: `${chosen.score * 100}%` }} />
+              <span
+                className="rh-grade-label"
+                style={{ color: grade.color, background: 'rgba(255,255,255,0.6)' }}
+              >
+                {grade.label}
+              </span>
+            </div>
+            <div
+              className="rh-spectrum"
+              role="progressbar"
+              aria-valuenow={scorePct}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label={`Accessibility score: ${scorePct} out of 100. ${grade.label}`}
+            >
+              <div className="rh-cursor" style={{ left: `${scorePct}%` }} aria-hidden="true" />
+            </div>
+          </div>
+        )}
+
+        {/* ── Feature chips ───────────────────────────────── */}
+        {chips.length > 0 && (
+          <div className="rh-chips" aria-label="Key route features">
+            {chips.map((c, i) => (
+              <span key={i} className={`feat-chip feat-chip--${c.type}`}>
+                <span aria-hidden="true">{c.sym}</span>
+                {c.text}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* ── Expand / collapse full breakdown ────────────── */}
+        <button
+          type="button"
+          className="rh-toggle-btn"
+          onClick={() => setExpanded(v => !v)}
+          aria-expanded={expanded}
+        >
+          {expanded ? '▲ Hide details' : '▼ Full breakdown'}
+        </button>
+
+        {expanded && (
+          <div className="rh-breakdown">
+            <div className="rh-breakdown-grid">
+              <StatCell label="Distance"           value={formatDistance(chosen.route.distance)} />
+              <StatCell label="Walk time"          value={formatDuration(chosen.route.duration)} />
+              <StatCell label="Crossings"          value={featureStats.crossings} />
+              <StatCell
+                label="Tactile crossings"
+                value={featureStats.tactileYes}
+                variant={featureStats.tactileYes > 0 ? 'good' : undefined}
+              />
+              <StatCell
+                label="No tactile"
+                value={featureStats.tactileNo}
+                variant={featureStats.tactileNo > 0 ? 'bad' : undefined}
+              />
+              <StatCell
+                label="Low kerbs"
+                value={featureStats.lowKerbs}
+                variant={featureStats.lowKerbs > 0 ? 'good' : undefined}
+              />
+              {(chosen.stepsMeters > 0) && (
+                <StatCell label="Steps" value={`${Math.round(chosen.stepsMeters)} m`} variant="bad" />
+              )}
+              {(chosen.narrowMeters > 0) && (
+                <StatCell label="Narrow pavement" value={`${Math.round(chosen.narrowMeters)} m`} variant="warn" />
+              )}
+              {(chosen.busyMeters > 0) && (
+                <StatCell label="Busy roads" value={`${Math.round(chosen.busyMeters)} m`} variant="warn" />
+              )}
+              {(chosen.litMeters > 0) && (
+                <StatCell label="Lit sections" value={`${Math.round(chosen.litMeters)} m`} variant="good" />
+              )}
+              {(chosen.unlitMeters > 0) && (
+                <StatCell label="Unlit sections" value={`${Math.round(chosen.unlitMeters)} m`} variant="bad" />
+              )}
+              {(chosen.streetLampCount > 0) && (
+                <StatCell label="Street lamps" value={chosen.streetLampCount} />
+              )}
+              {(chosen.forbiddenMeters > 0) && (
+                <StatCell label="Restricted proximity" value={`${Math.round(chosen.forbiddenMeters)} m`} variant="bad" />
+              )}
+            </div>
+
+            {selectedMode.reasons?.length > 0 && (
+              <div className="rh-reasons">
+                {selectedMode.reasons.map(r => (
+                  <p key={r} className="rh-reason">{r}</p>
+                ))}
               </div>
-            </>
-          )}
-          {hasEvidenceSummary && (
-            <div className="evidence-row" aria-label="Data confidence">
-              <EvidenceChip tone="known" label="Known" value={evidence.known || 0} />
-              <EvidenceChip tone="reported" label="Reported" value={evidence.reported || 0} />
-              <EvidenceChip tone="unknown" label="Unknown" value={evidence.unknown || 0} />
-            </div>
-          )}
-          {selectedMode.reasons?.length > 0 && (
-            <div className="reasons-list">
-              {selectedMode.reasons.map(reason => <div key={reason}>{reason}</div>)}
-            </div>
-          )}
-          <DetailList title="Nearby support places" items={nearbySupportItems} />
-          <DetailList title="Recent route reports" items={nearbyReportItems} />
-        </div>
+            )}
+          </div>
+        )}
       </div>
+
       <TurnByTurn steps={chosen.route.steps} />
     </>
   );

@@ -1,11 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import BottomSheet from './components/BottomSheet';
 import DirectionsBar from './components/DirectionsBar';
 import JourneyMap from './components/JourneyMap';
 import MapLegend from './components/MapLegend';
+import NavigationHud from './components/NavigationHud';
 import PreferenceList from './components/PreferenceList';
 import RouteDetails from './components/RouteDetails';
 import RouteModeCards from './components/RouteModeCards';
+import { useGpsTracking } from './hooks/useGpsTracking';
+import { useNavigation } from './hooks/useNavigation';
+import { DEFAULT_VOICE_ID } from './services/elevenlabs';
 import { formatDistance, formatDuration } from './utils/format';
 import { FILTERS } from './config/preferences';
 import { DEFAULT_ROUTE_MODE_ID } from './config/routeModes';
@@ -76,6 +80,25 @@ export default function App() {
   });
   const [sidebarOpen, setSidebarOpen] = useState(!isMobileViewport());
 
+  // ── Navigation state ──────────────────────────────────────────────────────
+  const [navActive, setNavActive]     = useState(false);
+  const [simulating, setSimulating]   = useState(false);
+  const [simPosition, setSimPosition] = useState(null);
+  const [accessibleMode, setAccessibleMode] = useState(false);
+  const [apiKey, setApiKey] = useState(() =>
+    import.meta.env.VITE_ELEVENLABS_API_KEY ||
+    localStorage.getItem('elevenlabs_api_key') ||
+    ''
+  );
+  const [voiceId, setVoiceId] = useState(
+    () => localStorage.getItem('elevenlabs_voice_id') || DEFAULT_VOICE_ID
+  );
+
+  // Simulation bookkeeping — use refs so the interval never closes over stale state
+  const simIntervalRef  = useRef(null);
+  const simCoordIdxRef  = useRef(0);
+  const chosenRef       = useRef(null);
+
   const requestIdRef = useRef(0);
 
   useEffect(() => {
@@ -84,6 +107,67 @@ export default function App() {
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  // GPS tracking — only active while navigating (no dependency on `chosen`)
+  const { position: gpsPosition, gpsError } = useGpsTracking(navActive);
+
+  // The position fed to the navigation engine: real GPS or simulated walk
+  const effectivePosition = simPosition ?? gpsPosition;
+
+  // ── Navigation handlers ────────────────────────────────────────────────────
+  const startNavigation = useCallback(() => {
+    setSidebarOpen(false);
+    setNavActive(true);
+  }, []);
+
+  const endNavigation = useCallback(() => {
+    setNavActive(false);
+    setSimulating(false);
+    setSimPosition(null);
+    if (simIntervalRef.current) {
+      clearInterval(simIntervalRef.current);
+      simIntervalRef.current = null;
+    }
+    simCoordIdxRef.current = 0;
+  }, []);
+
+  const toggleSimulation = useCallback(() => {
+    if (simulating) {
+      clearInterval(simIntervalRef.current);
+      simIntervalRef.current = null;
+      setSimulating(false);
+      setSimPosition(null);
+      simCoordIdxRef.current = 0;
+    } else {
+      simCoordIdxRef.current = 0;
+      setSimulating(true);
+      // Tick every 300 ms — advances one route coord at a time
+      simIntervalRef.current = setInterval(() => {
+        const coords = chosenRef.current?.route?.coords;
+        if (!coords) return;
+        const idx = simCoordIdxRef.current;
+        if (idx >= coords.length) {
+          clearInterval(simIntervalRef.current);
+          simIntervalRef.current = null;
+          setSimulating(false);
+          return;
+        }
+        const [lat, lng] = coords[idx];
+        setSimPosition({ lat, lng, accuracy: 3 });
+        simCoordIdxRef.current = idx + 1;
+      }, 300);
+    }
+  }, [simulating]);
+
+  const handleApiKeyChange = useCallback((key) => {
+    setApiKey(key);
+    localStorage.setItem('elevenlabs_api_key', key);
+  }, []);
+
+  const handleVoiceChange = useCallback((id) => {
+    setVoiceId(id);
+    localStorage.setItem('elevenlabs_voice_id', id);
   }, []);
 
   const clearRouteData = () => {
@@ -267,6 +351,35 @@ export default function App() {
   const chosen = chosenIndex >= 0 ? candidates[chosenIndex] : null;
   const selectedMode = recommendedMode;
 
+  // Keep chosenRef in sync so the simulation interval never closes over stale chosen
+  useEffect(() => { chosenRef.current = chosen ?? null; });
+
+  // Derive navigation inputs from the chosen route
+  const navSteps = useMemo(() => chosen?.route?.steps ?? [], [chosen]);
+  const navEndCoord = useMemo(() => {
+    const coords = chosen?.route?.coords;
+    return coords?.length ? coords[coords.length - 1] : null;
+  }, [chosen]);
+
+  const {
+    distanceToNext,
+    currentInstruction,
+    currentStep,
+    arrived,
+    updatePosition,
+  } = useNavigation({
+    steps:    navSteps,
+    endCoord: navEndCoord,
+    active:   navActive,
+    apiKey,
+    voiceId,
+  });
+
+  // Feed position updates into the navigation engine on every position change
+  useEffect(() => {
+    if (navActive && effectivePosition) updatePosition(effectivePosition);
+  }, [effectivePosition, navActive, updatePosition]);
+
   useEffect(() => {
     setSelectedRouteIndex(null);
   }, [routes]);
@@ -292,22 +405,33 @@ export default function App() {
       <div className="sheet-peek-time">Routing…</div>
       <div className="sheet-peek-meta">Finding accessible alternatives</div>
     </div>
-  ) : chosen ? (
-    <div className="sheet-peek-summary">
-      <div className="sheet-peek-time">{formatDuration(chosen.route.duration)}</div>
-      <div className="sheet-peek-meta">
-        <span>{formatDistance(chosen.route.distance)}</span>
-        <span className="dot">·</span>
-        <span>{selectedMode?.title || 'Route'}</span>
-        {candidateCount > 0 && (
-          <>
-            <span className="dot">·</span>
-            <span>{candidateCount} option{candidateCount === 1 ? '' : 's'}</span>
-          </>
-        )}
+  ) : chosen ? (() => {
+    const sp = chosen.score != null ? Math.round(chosen.score * 100) : null;
+    const spClass = sp == null ? '' : sp >= 68 ? 'good' : sp >= 42 ? 'warn' : 'red';
+    return (
+      <div className="sheet-peek-summary">
+        <div className="sheet-peek-row">
+          <div className="sheet-peek-time">{formatDuration(chosen.route.duration)}</div>
+          {sp != null && (
+            <span className={`peek-score-badge ${spClass}`} aria-label={`Accessibility score ${sp} out of 100`}>
+              ♿ {sp}
+            </span>
+          )}
+        </div>
+        <div className="sheet-peek-meta">
+          <span>{formatDistance(chosen.route.distance)}</span>
+          <span className="dot">·</span>
+          <span>{selectedMode?.title || 'Route'}</span>
+          {candidateCount > 0 && (
+            <>
+              <span className="dot">·</span>
+              <span>{candidateCount} option{candidateCount === 1 ? '' : 's'}</span>
+            </>
+          )}
+        </div>
       </div>
-    </div>
-  ) : (
+    );
+  })() : (
     <div className="sheet-peek-summary muted">
       <div className="sheet-peek-time">No route yet</div>
       <div className="sheet-peek-meta">{hint || 'Pick a start and destination'}</div>
@@ -315,19 +439,41 @@ export default function App() {
   );
 
   return (
-    <div className={`app${sidebarOpen ? ' sheet-open' : ' sheet-peek'}`}>
+    <div className={`app${sidebarOpen ? ' sheet-open' : ' sheet-peek'}${navActive ? ' nav-active' : ''}`}>
       <JourneyMap
-        hint={hint}
+        hint={navActive ? null : hint}
         loading={loading}
         start={start}
         end={end}
         scored={routeAnalyses}
         chosen={chosen}
         chosenIndex={chosenIndex}
-        onMapClick={handleMapClick}
+        onMapClick={navActive ? undefined : handleMapClick}
+        userPosition={effectivePosition}
+        followUser={navActive}
       />
 
-      <div className="top-card">
+      {/* ── Navigation HUD (shown when navigating) ─────────────────────── */}
+      {navActive && (
+        <NavigationHud
+          instruction={currentInstruction}
+          distanceToNext={distanceToNext}
+          currentStep={currentStep}
+          arrived={arrived}
+          simulating={simulating}
+          gpsError={gpsError}
+          accessible={accessibleMode}
+          apiKey={apiKey}
+          voiceId={voiceId}
+          onEnd={endNavigation}
+          onToggleSimulate={toggleSimulation}
+          onApiKeyChange={handleApiKeyChange}
+          onVoiceChange={handleVoiceChange}
+        />
+      )}
+
+      {/* Hide the directions card during active navigation — the HUD takes over */}
+      <div className={`top-card${navActive ? ' top-card--hidden' : ''}`}>
         <div className="brand-row">
           <span className="brand-mark" aria-hidden="true">🦮</span>
           <span className="brand-title">SafeStep · Belfast</span>
@@ -389,13 +535,35 @@ export default function App() {
       </div>
 
       <div className="fab-stack">
+        {/* Start Navigation — visible when a route is ready and not yet navigating */}
+        {chosen && !navActive && (
+          <button
+            type="button"
+            className="fab fab-nav"
+            onClick={startNavigation}
+            aria-label="Start navigation"
+            title="Start navigation"
+          >
+            <span aria-hidden="true">▶</span>
+          </button>
+        )}
+        {/* Accessibility mode toggle */}
+        <button
+          type="button"
+          className={`fab${accessibleMode ? ' fab-active' : ''}`}
+          onClick={() => setAccessibleMode(m => !m)}
+          aria-label={accessibleMode ? 'Disable accessibility mode' : 'Enable accessibility mode'}
+          title="Accessibility mode"
+        >
+          <span aria-hidden="true">♿</span>
+        </button>
         <button
           type="button"
           className="fab"
-          onClick={reset}
-          disabled={!start && !end}
-          aria-label="Clear points"
-          title="Clear"
+          onClick={navActive ? endNavigation : reset}
+          disabled={!navActive && !start && !end}
+          aria-label={navActive ? 'End navigation' : 'Clear points'}
+          title={navActive ? 'End' : 'Clear'}
         >
           <span aria-hidden="true">✕</span>
         </button>
