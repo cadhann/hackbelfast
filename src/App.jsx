@@ -5,11 +5,13 @@ import PlaceSearch from './components/PlaceSearch';
 import PointsPanel from './components/PointsPanel';
 import PreferenceList from './components/PreferenceList';
 import RouteDetails from './components/RouteDetails';
-import RouteList from './components/RouteList';
+import RouteModeCards from './components/RouteModeCards';
 import { FILTERS } from './config/preferences';
+import { DEFAULT_ROUTE_MODE_ID } from './config/routeModes';
 import { fetchAccessibilityData } from './services/accessibilityData';
+import { buildRouteModes } from './services/routeModes';
 import { fetchRoutes } from './services/routing';
-import { getFeatureStats, scoreRoute } from './services/routeScoring';
+import { analyzeRoute, getFeatureStats } from './services/routeScoring';
 import { combinedBbox, samePoint } from './utils/geo';
 import { searchDestinations } from './utils/search';
 import './App.css';
@@ -30,6 +32,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [warning, setWarning] = useState(null);
+  const [selectedModeId, setSelectedModeId] = useState(DEFAULT_ROUTE_MODE_ID);
   const [filters, setFilters] = useState({
     tactile: false,
     audio: false,
@@ -163,31 +166,20 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [start, end]);
 
-  const scored = useMemo(() => {
-    return routes.map(r => ({ route: r, ...scoreRoute(r, accData, filters) }));
-  }, [routes, accData, filters]);
+  const routeAnalyses = useMemo(() => {
+    return routes.map(route => analyzeRoute(route, accData));
+  }, [routes, accData]);
+  const routeModes = useMemo(() => buildRouteModes(routeAnalyses, filters), [routeAnalyses, filters]);
 
   const startResults = useMemo(() => searchDestinations(startQuery), [startQuery]);
   const destinationResults = useMemo(() => searchDestinations(destinationQuery), [destinationQuery]);
 
-  const chosenIndex = useMemo(() => {
-    if (scored.length === 0) return -1;
-    let best = -1;
-    for (let i = 0; i < scored.length; i++) {
-      if (scored[i].blocked) continue;
-      if (best === -1 || scored[i].effective < scored[best].effective) best = i;
-    }
-    if (best === -1) {
-      best = 0;
-      for (let i = 1; i < scored.length; i++) {
-        if (scored[i].forbiddenMeters < scored[best].forbiddenMeters) best = i;
-      }
-    }
-    return best;
-  }, [scored]);
-
-  const chosen = chosenIndex >= 0 ? scored[chosenIndex] : null;
-  const allBlocked = scored.length > 0 && scored.every(s => s.blocked);
+  const selectedMode = useMemo(() => {
+    return routeModes.find(mode => mode.id === selectedModeId) || routeModes[0] || null;
+  }, [routeModes, selectedModeId]);
+  const chosenIndex = selectedMode?.routeIndex ?? -1;
+  const chosen = selectedMode?.scoredRoute || null;
+  const allBlocked = routeAnalyses.length > 0 && routeAnalyses.every(route => route.blocked);
   const featureStats = useMemo(() => getFeatureStats(chosen), [chosen]);
 
   const hint = !start
@@ -200,7 +192,7 @@ export default function App() {
     <div className="app">
       <aside className="sidebar" aria-label="Route controls">
         <h1>Accessible Walk — Belfast</h1>
-        <p className="subtitle">Walking navigation built around accessibility features in OpenStreetMap.</p>
+        <p className="subtitle">Compare Fastest, Balanced, and Beacon Accessible walking routes using OpenStreetMap accessibility signals.</p>
 
         {error && <div className="error" role="alert">{error}</div>}
         {warning && <div className="warning" role="status">{warning}</div>}
@@ -278,12 +270,12 @@ export default function App() {
           onChange={(id, checked) => setFilters(prev => ({ ...prev, [id]: checked }))}
         />
 
-        <RouteList scored={scored} chosenIndex={chosenIndex} />
-        <RouteDetails chosen={chosen} featureStats={featureStats} filters={filters} />
+        <RouteModeCards modes={routeModes} selectedModeId={selectedMode?.id || selectedModeId} onSelect={setSelectedModeId} />
+        <RouteDetails chosen={chosen} selectedMode={selectedMode} featureStats={featureStats} filters={filters} />
         <MapLegend />
 
         <p className="subtitle" style={{ fontSize: 11, marginTop: 18 }}>
-          Picks among OSRM foot alternatives by adding accessibility penalties to each route's length, then choosing the lowest effective length. Tactile/audio/kerb penalties come from OSM crossing tags within 30 m of the route. Busy-road penalty multiplies meters of the route adjacent to primary/secondary/trunk ways. Crash data toggle is display-only until NI dataset is wired in.
+          Fastest chooses the shortest available walk, Balanced applies lighter accessibility weighting, and Beacon Accessible uses the full preference weighting. Tactile/audio/kerb signals come from OSM crossing tags within 30 m of the route. Busy-road penalty multiplies meters adjacent to primary/secondary/trunk ways. Crash data toggle is display-only until NI dataset is wired in.
         </p>
       </aside>
 
@@ -292,7 +284,7 @@ export default function App() {
         loading={loading}
         start={start}
         end={end}
-        scored={scored}
+        scored={routeAnalyses}
         chosen={chosen}
         chosenIndex={chosenIndex}
         onMapClick={handleMapClick}

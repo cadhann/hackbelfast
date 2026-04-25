@@ -5,7 +5,8 @@ export const PENALTIES = {
   audio_bonus: 200,
   kerb_raised: 600,
   kerb_bonus: 150,
-  busy_per_meter: 6
+  busy_per_meter: 6,
+  forbidden_per_meter: 8
 };
 
 export const FILTERS = [

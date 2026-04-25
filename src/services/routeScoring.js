@@ -1,6 +1,9 @@
 import { PENALTIES } from '../config/preferences';
 import { haversine, minDistanceToCoords } from '../utils/geo';
 
+const FORBIDDEN_BLOCK_METERS = 120;
+const FORBIDDEN_BLOCK_RATIO = 0.08;
+
 export function classifyFeature(el) {
   const t = el.tags || {};
   const tactileYes = t.tactile_paving === 'yes';
@@ -48,13 +51,10 @@ function forbiddenMetersOnRoute(forbiddenWays, coords, threshold = 10) {
   return metersOnRoute(forbiddenWays, coords, threshold);
 }
 
-export function scoreRoute(route, accData, filters) {
-  const near = nodesNearRoute(accData.nodes, route.coords);
-  let penalty = 0;
-  let pos = 0, neg = 0, unknown = 0;
-
-  const forbiddenMeters = forbiddenMetersOnRoute(accData.forbiddenWays || [], route.coords);
-  const blocked = forbiddenMeters > 5;
+function collectRouteSignals(near) {
+  let tactileYes = 0, tactileNo = 0, tactileUnknown = 0;
+  let audioYes = 0, audioNo = 0;
+  let kerbLow = 0, kerbHigh = 0, kerbUnknown = 0;
 
   for (const el of near) {
     const t = el.tags || {};
@@ -62,27 +62,76 @@ export function scoreRoute(route, accData, filters) {
     const isCrossing = t.highway === 'crossing';
     const isSignalised = t.crossing === 'traffic_signals' || t.crossing === 'signals';
 
-    if (filters.tactile && isCrossing) {
-      if (c.tactileYes) { pos++; penalty -= PENALTIES.tactile_bonus; }
-      else if (c.tactileNo) { neg++; penalty += PENALTIES.tactile_missing; }
-      else unknown++;
+    if (isCrossing) {
+      if (c.tactileYes) tactileYes++;
+      else if (c.tactileNo) tactileNo++;
+      else tactileUnknown++;
     }
-    if (filters.audio && isSignalised) {
-      if (c.audioYes) { pos++; penalty -= PENALTIES.audio_bonus; }
-      else { neg++; penalty += PENALTIES.audio_missing; }
+
+    if (isSignalised) {
+      if (c.audioYes) audioYes++;
+      else audioNo++;
     }
-    if (filters.kerb && (isCrossing || t.kerb)) {
-      if (c.lowKerb) { pos++; penalty -= PENALTIES.kerb_bonus; }
-      else if (c.highKerb) { neg++; penalty += PENALTIES.kerb_raised; }
-      else if (t.kerb) unknown++;
+
+    if (isCrossing || t.kerb) {
+      if (c.lowKerb) kerbLow++;
+      else if (c.highKerb) kerbHigh++;
+      else if (t.kerb) kerbUnknown++;
     }
   }
 
-  let busyMeters = 0;
-  if (filters.avoid_busy) {
-    busyMeters = busyMetersOnRoute(accData.busyWays, route.coords);
-    penalty += busyMeters * PENALTIES.busy_per_meter;
-  }
+  return {
+    tactileYes,
+    tactileNo,
+    tactileUnknown,
+    audioYes,
+    audioNo,
+    kerbLow,
+    kerbHigh,
+    kerbUnknown
+  };
+}
+
+export function analyzeRoute(route, accData) {
+  const near = nodesNearRoute(accData.nodes, route.coords);
+  const signals = collectRouteSignals(near);
+  const busyMeters = busyMetersOnRoute(accData.busyWays || [], route.coords);
+  const forbiddenMeters = forbiddenMetersOnRoute(accData.forbiddenWays || [], route.coords);
+  const blocked = forbiddenMeters > Math.max(FORBIDDEN_BLOCK_METERS, route.distance * FORBIDDEN_BLOCK_RATIO);
+
+  return {
+    route,
+    near,
+    signals,
+    busyMeters,
+    forbiddenMeters,
+    blocked
+  };
+}
+
+export function scoreRouteAnalysis(analysis, weights) {
+  let penalty = 0;
+  let pos = 0, neg = 0, unknown = 0;
+
+  penalty += analysis.signals.tactileYes * PENALTIES.tactile_bonus * -weights.tactile;
+  penalty += analysis.signals.tactileNo * PENALTIES.tactile_missing * weights.tactile;
+  penalty += analysis.signals.audioYes * PENALTIES.audio_bonus * -weights.audio;
+  penalty += analysis.signals.audioNo * PENALTIES.audio_missing * weights.audio;
+  penalty += analysis.signals.kerbLow * PENALTIES.kerb_bonus * -weights.kerb;
+  penalty += analysis.signals.kerbHigh * PENALTIES.kerb_raised * weights.kerb;
+  penalty += analysis.busyMeters * PENALTIES.busy_per_meter * weights.avoid_busy;
+  penalty += analysis.forbiddenMeters * PENALTIES.forbidden_per_meter * (weights.forbidden || 0);
+
+  pos += analysis.signals.tactileYes * weights.tactile;
+  pos += analysis.signals.audioYes * weights.audio;
+  pos += analysis.signals.kerbLow * weights.kerb;
+
+  neg += analysis.signals.tactileNo * weights.tactile;
+  neg += analysis.signals.audioNo * weights.audio;
+  neg += analysis.signals.kerbHigh * weights.kerb;
+
+  unknown += analysis.signals.tactileUnknown * weights.tactile;
+  unknown += analysis.signals.kerbUnknown * weights.kerb;
 
   const total = pos + neg + unknown;
   let score = null;
@@ -92,13 +141,10 @@ export function scoreRoute(route, accData, filters) {
   }
 
   return {
-    near,
+    ...analysis,
     penalty,
-    busyMeters,
-    forbiddenMeters,
-    blocked,
     pos, neg, unknown,
-    effective: blocked ? Infinity : route.distance + penalty,
+    effective: analysis.blocked ? Infinity : analysis.route.distance + penalty,
     score
   };
 }
