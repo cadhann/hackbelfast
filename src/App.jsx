@@ -54,6 +54,44 @@ const FILTERS = [
   }
 ];
 
+const OVERPASS_TIMEOUT_MS = 30000;
+const OVERPASS_ENDPOINTS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+  'https://h24.atownsend.org.uk/api/interpreter'
+];
+
+function isLocalDevHost() {
+  const host = window.location.hostname;
+  return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
+}
+
+function getOverpassEndpoints() {
+  return isLocalDevHost() ? ['/api/overpass', ...OVERPASS_ENDPOINTS] : OVERPASS_ENDPOINTS;
+}
+
+function friendlyFetchError(error) {
+  if (error.name === 'AbortError') return 'request timed out';
+  if (error instanceof TypeError) return 'network blocked or unreachable';
+  return error.message || 'request failed';
+}
+
+async function fetchJson(url, options = {}, timeoutMs = OVERPASS_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    try {
+      return await res.json();
+    } catch {
+      throw new Error('non-JSON response');
+    }
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function ClickHandler({ onClick }) {
   useMapEvents({
     click(e) {
@@ -112,7 +150,12 @@ function offsetWaypoint(start, end, perpMeters) {
 async function fetchOsrm(coords) {
   const path = coords.map(c => `${c.lng},${c.lat}`).join(';');
   const url = `https://router.project-osrm.org/route/v1/foot/${path}?overview=full&geometries=geojson&steps=false`;
-  const res = await fetch(url);
+  let res;
+  try {
+    res = await fetch(url);
+  } catch (e) {
+    throw new Error(`Routing service unreachable: ${friendlyFetchError(e)}`);
+  }
   if (!res.ok) throw new Error(`Routing failed (${res.status})`);
   const data = await res.json();
   if (!data.routes || data.routes.length === 0) throw new Error('No route found');
@@ -141,7 +184,13 @@ async function fetchRoutes(start, end) {
   });
   const settled = await Promise.allSettled(tasks);
   const ok = settled.filter(s => s.status === 'fulfilled').map(s => s.value);
-  if (ok.length === 0) throw new Error('All routing attempts failed');
+  if (ok.length === 0) {
+    const reason = settled
+      .filter(s => s.status === 'rejected')
+      .map(s => friendlyFetchError(s.reason))
+      .filter(Boolean)[0];
+    throw new Error(reason ? `All routing attempts failed: ${reason}` : 'All routing attempts failed');
+  }
 
   const seen = new Set();
   const unique = [];
@@ -167,13 +216,6 @@ function combinedBbox(routes, padding = 0.0015) {
   return [minLat - padding, minLon - padding, maxLat + padding, maxLon + padding];
 }
 
-const OVERPASS_MIRRORS = [
-  'https://overpass-api.de/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
-  'https://overpass.private.coffee/api/interpreter',
-  'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
-];
-
 async function fetchAccessibilityData(bbox) {
   const [s, w, n, e] = bbox;
   const query = `
@@ -185,44 +227,50 @@ async function fetchAccessibilityData(bbox) {
     );
     out body geom;
   `;
-  const body = 'data=' + encodeURIComponent(query);
-  let lastErr = null;
-  for (const url of OVERPASS_MIRRORS) {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 20000);
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body,
-          signal: ctrl.signal
-        });
-        clearTimeout(timer);
-        if (res.status === 429 || res.status === 504) {
-          lastErr = new Error(`${url} → ${res.status}`);
-          await new Promise(r => setTimeout(r, 800));
-          continue;
-        }
-        if (!res.ok) {
-          lastErr = new Error(`${url} → ${res.status}`);
+  const encodedQuery = encodeURIComponent(query);
+  const attempts = [];
+  let data = null;
+  let source = null;
+
+  for (const endpoint of getOverpassEndpoints()) {
+    const methods = endpoint.startsWith('/') ? ['POST'] : ['GET', 'POST'];
+    for (const method of methods) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          data = await fetchJson(
+            method === 'GET' ? `${endpoint}?data=${encodedQuery}` : endpoint,
+            method === 'POST'
+              ? {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+                  body: `data=${encodedQuery}`
+                }
+              : { method: 'GET' }
+          );
+          source = endpoint;
           break;
+        } catch (e) {
+          attempts.push(`${endpoint} ${method}: ${friendlyFetchError(e)}`);
+          if (attempt === 0) await new Promise(resolve => setTimeout(resolve, 500));
         }
-        const data = await res.json();
-        const nodes = [];
-        const busyWays = [];
-        for (const el of data.elements || []) {
-          if (el.type === 'node') nodes.push(el);
-          else if (el.type === 'way' && el.geometry) busyWays.push(el);
-        }
-        return { nodes, busyWays };
-      } catch (err) {
-        lastErr = err;
-        await new Promise(r => setTimeout(r, 500));
       }
+      if (data) break;
     }
+    if (data) break;
   }
-  throw new Error(`All Overpass mirrors failed (last: ${lastErr?.message || 'unknown'})`);
+
+  if (!data) {
+    const last = attempts[attempts.length - 1] || 'no endpoint attempted';
+    throw new Error(`Overpass blocked or unavailable (${last})`);
+  }
+
+  const nodes = [];
+  const busyWays = [];
+  for (const el of data.elements || []) {
+    if (el.type === 'node') nodes.push(el);
+    else if (el.type === 'way' && el.geometry) busyWays.push(el);
+  }
+  return { nodes, busyWays, source };
 }
 
 function classifyFeature(el) {
@@ -331,6 +379,7 @@ export default function App() {
   const [accData, setAccData] = useState({ nodes: [], busyWays: [] });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [warning, setWarning] = useState(null);
   const [filters, setFilters] = useState({
     tactile: false,
     audio: false,
@@ -340,7 +389,7 @@ export default function App() {
   });
 
   const handleMapClick = (latlng) => {
-    setError(null);
+    setError(null); setWarning(null);
     if (!start) setStart(latlng);
     else if (!end) setEnd(latlng);
     else {
@@ -351,12 +400,12 @@ export default function App() {
 
   const reset = () => {
     setStart(null); setEnd(null); setRoutes([]);
-    setAccData({ nodes: [], busyWays: [] }); setError(null);
+    setAccData({ nodes: [], busyWays: [] }); setError(null); setWarning(null);
   };
 
   const computeRoute = async () => {
     if (!start || !end) return;
-    setLoading(true); setError(null);
+    setLoading(true); setError(null); setWarning(null);
     try {
       const rs = await fetchRoutes(start, end);
       setRoutes(rs);
@@ -366,7 +415,10 @@ export default function App() {
         setAccData(data);
       } catch (e) {
         setAccData({ nodes: [], busyWays: [] });
-        setError('Routes found, but accessibility lookup failed: ' + e.message);
+        setWarning(
+          'Route shown without accessibility scoring because the OSM accessibility lookup is blocked or unreachable on this network. ' +
+          e.message
+        );
       }
     } catch (e) {
       setError(e.message);
@@ -422,6 +474,7 @@ export default function App() {
         <p className="subtitle">Walking navigation built around accessibility features in OpenStreetMap.</p>
 
         {error && <div className="error" role="alert">{error}</div>}
+        {warning && <div className="warning" role="status">{warning}</div>}
 
         <div className="section">
           <h2>Points</h2>

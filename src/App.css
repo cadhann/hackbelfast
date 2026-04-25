@@ -167,6 +167,16 @@
   margin-bottom: 12px;
 }
 
+.warning {
+  background: #fff7df;
+  color: #7a4d00;
+  padding: 10px 12px;
+  border: 1px solid #f3d27a;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
 .legend {
   font-size: 12px;
 }

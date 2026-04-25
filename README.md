@@ -18,6 +18,8 @@ npm run dev
 
 Then open http://localhost:5173/.
 
+If a public or guest Wi-Fi network blocks direct browser requests to Overpass, the dev server proxies `/api/overpass` to the main Overpass API and the client also falls back to public Overpass mirrors. Routes still render if accessibility lookup is unavailable; accessibility scoring is skipped until the lookup succeeds.
+
 ## How the routing bias works
 
 OSRM's public demo only returns one route per request, so alternatives are generated client-side by routing through perpendicular waypoints (≈ ±300 m off the midpoint of start→end). Each candidate is then scored:
