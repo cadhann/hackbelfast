@@ -6,6 +6,99 @@ import './App.css';
 const BELFAST = [54.5973, -5.9301];
 const BELFAST_BOUNDS = L.latLngBounds([54.52, -6.10], [54.68, -5.78]);
 
+const DESTINATIONS = [
+  {
+    id: 'grand-central',
+    name: 'Belfast Grand Central Station',
+    type: 'Station',
+    area: 'Weavers Cross',
+    lat: 54.5946,
+    lng: -5.9367,
+    aliases: ['europa', 'buscentre', 'transport hub']
+  },
+  {
+    id: 'city-hall',
+    name: 'Belfast City Hall',
+    type: 'Landmark',
+    area: 'Donegall Square',
+    lat: 54.5964,
+    lng: -5.9300,
+    aliases: ['donegall square']
+  },
+  {
+    id: 'lanyon-place',
+    name: 'Lanyon Place Station',
+    type: 'Station',
+    area: 'East Bridge Street',
+    lat: 54.5951,
+    lng: -5.9174,
+    aliases: ['central station', 'train station']
+  },
+  {
+    id: 'queens-university',
+    name: "Queen's University Belfast",
+    type: 'Campus',
+    area: 'University Road',
+    lat: 54.5844,
+    lng: -5.9342,
+    aliases: ['qub', 'queens']
+  },
+  {
+    id: 'ulster-hall',
+    name: 'Ulster Hall',
+    type: 'Venue',
+    area: 'Bedford Street',
+    lat: 54.5949,
+    lng: -5.9309,
+    aliases: ['concert hall']
+  },
+  {
+    id: 'waterfront-hall',
+    name: 'Waterfront Hall',
+    type: 'Venue',
+    area: 'Lanyon Place',
+    lat: 54.5962,
+    lng: -5.9191,
+    aliases: ['icc belfast']
+  },
+  {
+    id: 'sse-arena',
+    name: 'SSE Arena Belfast',
+    type: 'Venue',
+    area: 'Titanic Quarter',
+    lat: 54.6031,
+    lng: -5.9143,
+    aliases: ['arena', 'odyssey']
+  },
+  {
+    id: 'titanic-belfast',
+    name: 'Titanic Belfast',
+    type: 'Visitor attraction',
+    area: 'Titanic Quarter',
+    lat: 54.6081,
+    lng: -5.9097,
+    aliases: ['titanic museum']
+  },
+  {
+    id: 'st-georges-market',
+    name: "St George's Market",
+    type: 'Market',
+    area: 'Oxford Street',
+    lat: 54.5960,
+    lng: -5.9235,
+    aliases: ['market']
+  },
+  {
+    id: 'botanic-gardens',
+    name: 'Botanic Gardens',
+    type: 'Park',
+    area: 'Queen’s Quarter',
+    lat: 54.5827,
+    lng: -5.9334,
+    aliases: ['botanic park']
+  }
+];
+
 const PENALTIES = {
   tactile_missing: 600,
   tactile_bonus: 200,
@@ -406,6 +499,9 @@ function formatDuration(s) {
 export default function App() {
   const [start, setStart] = useState(null);
   const [end, setEnd] = useState(null);
+  const [destinationQuery, setDestinationQuery] = useState('');
+  const [destinationSearchOpen, setDestinationSearchOpen] = useState(false);
+  const [selectedDestination, setSelectedDestination] = useState(null);
   const [routes, setRoutes] = useState([]);
   const [accData, setAccData] = useState({ nodes: [], busyWays: [] });
   const [loading, setLoading] = useState(false);
@@ -422,15 +518,40 @@ export default function App() {
   const handleMapClick = (latlng) => {
     setError(null); setWarning(null);
     if (!start) setStart(latlng);
-    else if (!end) setEnd(latlng);
+    else if (!end) {
+      setEnd(latlng);
+      setSelectedDestination(null);
+      setDestinationQuery('');
+    }
     else {
       setStart(latlng); setEnd(null);
+      setSelectedDestination(null);
+      setDestinationQuery('');
       setRoutes([]); setAccData({ nodes: [], busyWays: [] });
     }
   };
 
+  const selectDestination = (destination) => {
+    setEnd({ lat: destination.lat, lng: destination.lng });
+    setSelectedDestination(destination);
+    setDestinationQuery(destination.name);
+    setDestinationSearchOpen(false);
+    setError(null); setWarning(null);
+    setRoutes([]); setAccData({ nodes: [], busyWays: [] });
+  };
+
+  const clearDestination = () => {
+    setEnd(null);
+    setSelectedDestination(null);
+    setDestinationQuery('');
+    setDestinationSearchOpen(false);
+    setRoutes([]); setAccData({ nodes: [], busyWays: [] });
+    setError(null); setWarning(null);
+  };
+
   const reset = () => {
     setStart(null); setEnd(null); setRoutes([]);
+    setSelectedDestination(null); setDestinationQuery(''); setDestinationSearchOpen(false);
     setAccData({ nodes: [], busyWays: [] }); setError(null); setWarning(null);
   };
 
@@ -467,6 +588,17 @@ export default function App() {
   const scored = useMemo(() => {
     return routes.map(r => ({ route: r, ...scoreRoute(r, accData, filters) }));
   }, [routes, accData, filters]);
+
+  const destinationResults = useMemo(() => {
+    const q = destinationQuery.trim().toLowerCase();
+    const matches = q
+      ? DESTINATIONS.filter(d => {
+          const haystack = [d.name, d.type, d.area, ...(d.aliases || [])].join(' ').toLowerCase();
+          return haystack.includes(q);
+        })
+      : DESTINATIONS;
+    return matches.slice(0, 5);
+  }, [destinationQuery]);
 
   const chosenIndex = useMemo(() => {
     if (scored.length === 0) return -1;
@@ -521,6 +653,49 @@ export default function App() {
         )}
 
         <div className="section">
+          <h2>Destination search</h2>
+          <label className="field-label" htmlFor="destination-search">
+            Search venues, stations, stops, or landmarks
+          </label>
+          <input
+            id="destination-search"
+            className="destination-input"
+            type="search"
+            value={destinationQuery}
+            placeholder="Try Grand Central, City Hall, Titanic..."
+            autoComplete="off"
+            onChange={(e) => {
+              setDestinationQuery(e.target.value);
+              setDestinationSearchOpen(true);
+              setSelectedDestination(null);
+            }}
+            onFocus={() => setDestinationSearchOpen(true)}
+          />
+          {destinationSearchOpen && (
+            <div className="destination-results" role="list" aria-label="Destination suggestions">
+              {destinationResults.length > 0 ? destinationResults.map(destination => (
+                <button
+                  key={destination.id}
+                  type="button"
+                  className="destination-result"
+                  onClick={() => selectDestination(destination)}
+                >
+                  <span className="destination-name">{destination.name}</span>
+                  <span className="destination-meta">{destination.type} · {destination.area}</span>
+                </button>
+              )) : (
+                <div className="destination-empty">No seeded Belfast destination found.</div>
+              )}
+            </div>
+          )}
+          <div className="destination-actions">
+            <button className="btn" type="button" onClick={clearDestination} disabled={!end && !destinationQuery}>
+              Clear destination
+            </button>
+          </div>
+        </div>
+
+        <div className="section">
           <h2>Points</h2>
           <div className="point-row">
             <span className="point-dot start" aria-hidden="true" />
@@ -531,7 +706,16 @@ export default function App() {
           <div className="point-row">
             <span className="point-dot end" aria-hidden="true" />
             <span className="point-coords">
-              {end ? `${end.lat.toFixed(5)}, ${end.lng.toFixed(5)}` : <span className="point-empty">click map to set destination</span>}
+              {end
+                ? selectedDestination
+                  ? (
+                      <>
+                        <strong>{selectedDestination.name}</strong>
+                        <span className="point-detail">{selectedDestination.area}</span>
+                      </>
+                    )
+                  : `${end.lat.toFixed(5)}, ${end.lng.toFixed(5)}`
+                : <span className="point-empty">search or click map to set destination</span>}
             </span>
           </div>
           <div className="btn-row" style={{ marginTop: 10 }}>
