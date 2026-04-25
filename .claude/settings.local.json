@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(jupyter kernelspec:*)",
+      "Bash(pip install:*)",
+      "Bash(python3 -c ' *)",
+      "Bash(python -c \"import ipykernel; print\\(ipykernel.__version__\\)\")",
+      "Bash(python -c \"import pandas, sklearn, matplotlib; print\\('pandas', pandas.__version__\\); print\\('sklearn', sklearn.__version__\\); print\\('matplotlib', matplotlib.__version__\\)\")",
+      "Bash(python -c ' *)",
+      "Bash(jupyter nbconvert *)",
+      "Bash(python -m jupyter nbconvert --to notebook --execute section1_code.ipynb --output section1_code_test.ipynb)",
+      "Bash(python -c \"import IPython; from pathlib import Path; p=Path.home\\(\\)/'.ipython'/'profile_default'/'startup'; p.mkdir\\(parents=True, exist_ok=True\\); print\\(p\\)\")",
+      "Bash(grep -E '\\\\.csv$')",
+      "Bash(python)",
+      "Bash(python -m jupyter nbconvert --to notebook --execute --inplace section1_code.ipynb)",
+      "Bash(python -m jupyter nbconvert --to notebook --execute --inplace section2_code.ipynb)",
+      "Bash(python -m jupyter nbconvert --to notebook --execute --inplace section3_code.ipynb)",
+      "Bash(pdftotext -layout \"C:/Users/harri/Downloads/Assignment 2 Machine Learning.pdf\" \"C:/Users/harri/Downloads/_brief.txt\")",
+      "Bash(awk -F',' '{print NF \" columns\"}')",
+      "Bash(pdftotext -layout \"C:/Users/harri/Desktop/Assignment 1. Statistics and Feature Selection \\(2\\).pdf\" \"C:/Users/harri/Downloads/_a1_brief.txt\")",
+      "Bash(awk -F',' '{print NF}')"
+    ]
+  }
+}

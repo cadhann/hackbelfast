@@ -19,7 +19,16 @@ import { combinedBbox, samePoint } from './utils/geo';
 import { searchDestinations } from './utils/search';
 import './App.css';
 
-const EMPTY_ACC_DATA = { nodes: [], busyWays: [], forbiddenWays: [] };
+const EMPTY_ACC_DATA = {
+  nodes: [],
+  busyWays: [],
+  forbiddenWays: [],
+  stepsWays: [],
+  narrowWays: [],
+  litWays: [],
+  unlitWays: [],
+  streetLamps: []
+};
 const MOBILE_BREAKPOINT = 720;
 
 function isMobileViewport() {
@@ -47,6 +56,9 @@ export default function App() {
     audio: false,
     kerb: false,
     avoid_busy: false,
+    avoid_steps: false,
+    pavement_width: false,
+    streetlights: false,
     avoid_crash: false
   });
   const [sidebarOpen, setSidebarOpen] = useState(!isMobileViewport());

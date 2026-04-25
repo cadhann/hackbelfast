@@ -80,6 +80,32 @@ function forbiddenMetersOnRoute(forbiddenWays, coords, threshold = 10) {
   return metersOnRouteAlongWays(forbiddenWays, coords, threshold);
 }
 
+function stepsMetersOnRoute(stepsWays, coords, threshold = 10) {
+  return metersOnRouteAlongWays(stepsWays, coords, threshold);
+}
+
+function narrowMetersOnRoute(narrowWays, coords, threshold = 8) {
+  return metersOnRouteAlongWays(narrowWays, coords, threshold);
+}
+
+function litMetersOnRoute(litWays, coords, threshold = 14) {
+  return metersOnRouteAlongWays(litWays, coords, threshold);
+}
+
+function unlitMetersOnRoute(unlitWays, coords, threshold = 14) {
+  return metersOnRouteAlongWays(unlitWays, coords, threshold);
+}
+
+function lampsNearRoute(streetLamps, coords, threshold = 25) {
+  if (!streetLamps || streetLamps.length === 0) return 0;
+  let count = 0;
+  for (const el of streetLamps) {
+    const d = minDistanceToCoords([el.lat, el.lon], coords);
+    if (d < threshold) count++;
+  }
+  return count;
+}
+
 function collectRouteSignals(near) {
   let crossings = 0;
   let tactileYes = 0, tactileNo = 0, tactileUnknown = 0;
@@ -140,6 +166,11 @@ export function analyzeRoute(route, accData) {
   const signals = collectRouteSignals(near);
   const busyMeters = busyMetersOnRoute(accData.busyWays || [], route.coords);
   const forbiddenMeters = forbiddenMetersOnRoute(accData.forbiddenWays || [], route.coords);
+  const stepsMeters = stepsMetersOnRoute(accData.stepsWays || [], route.coords);
+  const narrowMeters = narrowMetersOnRoute(accData.narrowWays || [], route.coords);
+  const litMeters = litMetersOnRoute(accData.litWays || [], route.coords);
+  const unlitMeters = unlitMetersOnRoute(accData.unlitWays || [], route.coords);
+  const streetLampCount = lampsNearRoute(accData.streetLamps || [], route.coords);
   const blocked = forbiddenMeters > Math.max(FORBIDDEN_BLOCK_METERS, route.distance * FORBIDDEN_BLOCK_RATIO);
   const intrinsicScore = computeIntrinsicScore(signals);
 
@@ -149,6 +180,11 @@ export function analyzeRoute(route, accData) {
     signals,
     busyMeters,
     forbiddenMeters,
+    stepsMeters,
+    narrowMeters,
+    litMeters,
+    unlitMeters,
+    streetLampCount,
     blocked,
     intrinsicScore
   };
@@ -165,6 +201,11 @@ export function scoreRouteAnalysis(analysis, weights) {
   penalty += analysis.signals.kerbHigh * PENALTIES.kerb_raised * weights.kerb;
   penalty += analysis.busyMeters * PENALTIES.busy_per_meter * weights.avoid_busy;
   penalty += analysis.forbiddenMeters * PENALTIES.forbidden_per_meter * (weights.forbidden || 0);
+  penalty += analysis.stepsMeters * PENALTIES.steps_per_meter * (weights.avoid_steps || 0);
+  penalty += analysis.narrowMeters * PENALTIES.narrow_per_meter * (weights.pavement_width || 0);
+  penalty += analysis.unlitMeters * PENALTIES.unlit_per_meter * (weights.streetlights || 0);
+  penalty -= analysis.litMeters * PENALTIES.lit_per_meter_bonus * (weights.streetlights || 0);
+  penalty -= analysis.streetLampCount * PENALTIES.lamp_bonus * (weights.streetlights || 0);
 
   return {
     ...analysis,

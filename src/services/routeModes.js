@@ -3,11 +3,16 @@ import { formatDistance } from '../utils/format';
 import { scoreRouteAnalysis } from './routeScoring';
 
 function buildModeWeights(mode, preferences) {
+  const apply = (key) =>
+    mode.defaultWeights[key] + (preferences[key] ? mode.preferenceBoosts[key] : 0);
   return {
-    tactile: mode.defaultWeights.tactile + (preferences.tactile ? mode.preferenceBoosts.tactile : 0),
-    audio: mode.defaultWeights.audio + (preferences.audio ? mode.preferenceBoosts.audio : 0),
-    kerb: mode.defaultWeights.kerb + (preferences.kerb ? mode.preferenceBoosts.kerb : 0),
-    avoid_busy: mode.defaultWeights.avoid_busy + (preferences.avoid_busy ? mode.preferenceBoosts.avoid_busy : 0),
+    tactile: apply('tactile'),
+    audio: apply('audio'),
+    kerb: apply('kerb'),
+    avoid_busy: apply('avoid_busy'),
+    avoid_steps: apply('avoid_steps'),
+    pavement_width: apply('pavement_width'),
+    streetlights: apply('streetlights'),
     forbidden: mode.defaultWeights.forbidden
   };
 }

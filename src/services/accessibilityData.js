@@ -24,10 +24,14 @@ export async function fetchAccessibilityData(bbox) {
     (
       node["highway"="crossing"](${s},${w},${n},${e});
       node["kerb"](${s},${w},${n},${e});
+      node["highway"="street_lamp"](${s},${w},${n},${e});
       way["highway"~"^(primary|secondary|trunk|primary_link|secondary_link|trunk_link)$"](${s},${w},${n},${e});
       way["highway"~"^(motorway|motorway_link)$"](${s},${w},${n},${e});
       way["foot"~"^(no|private)$"](${s},${w},${n},${e});
       way["access"~"^(no|private)$"]["foot"!~"^(yes|designated|permissive)$"](${s},${w},${n},${e});
+      way["highway"="steps"](${s},${w},${n},${e});
+      way["highway"~"^(footway|path|pedestrian|sidewalk|residential|service|living_street)$"]["lit"~"^(no|yes)$"](${s},${w},${n},${e});
+      way["highway"~"^(footway|path|pedestrian|sidewalk)$"]["width"](${s},${w},${n},${e});
     );
     out body geom;
   `;
@@ -70,23 +74,41 @@ export async function fetchAccessibilityData(bbox) {
   }
 
   const nodes = [];
+  const streetLamps = [];
   const busyWays = [];
   const forbiddenWays = [];
+  const stepsWays = [];
+  const litWays = [];
+  const unlitWays = [];
+  const narrowWays = [];
   for (const el of data.elements || []) {
     if (el.type === 'node') {
-      nodes.push(el);
+      const t = el.tags || {};
+      if (t.highway === 'street_lamp') streetLamps.push(el);
+      else nodes.push(el);
     } else if (el.type === 'way' && el.geometry) {
       const t = el.tags || {};
       const isMotorway = t.highway === 'motorway' || t.highway === 'motorway_link';
       const footAllowed = t.foot === 'yes' || t.foot === 'designated' || t.foot === 'permissive';
       const footForbidden = t.foot === 'no' || t.foot === 'private';
       const accessForbidden = (t.access === 'no' || t.access === 'private') && !footAllowed;
+      const isSteps = t.highway === 'steps';
       if (isMotorway || footForbidden || accessForbidden) {
         forbiddenWays.push(el);
-      } else {
+      } else if (isSteps) {
+        stepsWays.push(el);
+      } else if (t.highway === 'primary' || t.highway === 'secondary' || t.highway === 'trunk' ||
+                 t.highway === 'primary_link' || t.highway === 'secondary_link' || t.highway === 'trunk_link') {
         busyWays.push(el);
+      }
+      if (t.lit === 'yes') litWays.push(el);
+      else if (t.lit === 'no') unlitWays.push(el);
+      const widthMeters = parseFloat(t.width);
+      if (Number.isFinite(widthMeters) && widthMeters > 0 && widthMeters < 1.5) {
+        narrowWays.push(el);
       }
     }
   }
-  return mergeDemoAccessibilityData({ nodes, busyWays, forbiddenWays, source }, bbox);
+  const merged = mergeDemoAccessibilityData({ nodes, busyWays, forbiddenWays, source }, bbox);
+  return { ...merged, streetLamps, stepsWays, litWays, unlitWays, narrowWays };
 }

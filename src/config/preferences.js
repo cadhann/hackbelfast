@@ -6,7 +6,12 @@ export const PENALTIES = {
   kerb_raised: 600,
   kerb_bonus: 150,
   busy_per_meter: 6,
-  forbidden_per_meter: 8
+  forbidden_per_meter: 8,
+  steps_per_meter: 14,
+  narrow_per_meter: 5,
+  unlit_per_meter: 3,
+  lit_per_meter_bonus: 1,
+  lamp_bonus: 60
 };
 
 export const FILTERS = [
@@ -29,6 +34,21 @@ export const FILTERS = [
     id: 'avoid_busy',
     title: 'Avoid busy multi-lane streets',
     desc: 'Penalise primary/secondary/trunk roads along the route.'
+  },
+  {
+    id: 'avoid_steps',
+    title: 'Avoid stairs / steps',
+    desc: 'Strongly penalise highway=steps segments (wheelchair, stroller, cane).'
+  },
+  {
+    id: 'pavement_width',
+    title: 'Wider pavements',
+    desc: 'Penalise footways tagged narrower than 1.5 m (wheelchair clearance).'
+  },
+  {
+    id: 'streetlights',
+    title: 'Well-lit streets',
+    desc: 'Reward street lamps and lit=yes ways; penalise lit=no segments.'
   },
   {
     id: 'avoid_crash',

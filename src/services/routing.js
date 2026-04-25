@@ -25,7 +25,8 @@ async function fetchOsrm(coords) {
         distance: step.distance,
         duration: step.duration,
         name: step.name,
-        instruction: step.maneuver?.type || ''
+        instruction: step.maneuver?.type || '',
+        modifier: step.maneuver?.modifier || ''
       });
     }
   }
