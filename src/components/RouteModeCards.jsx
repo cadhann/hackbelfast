@@ -23,7 +23,9 @@ export default function RouteModeCards({
     modePicksByIndex.get(mode.routeIndex).push(mode);
   }
 
-  const visible = candidates.map((c, i) => ({ c, i }));
+  const visible = candidates.map((c, i) => ({ c, i })).filter(({ c }) => !c.blocked);
+
+  if (visible.length === 0) return null;
 
   return (
     <div className="mode-section">

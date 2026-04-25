@@ -284,7 +284,7 @@ export default function App() {
     closeSearches();
   };
 
-  const candidateCount = routeAnalyses.length;
+  const candidateCount = candidates.filter(c => !c.blocked).length;
   const peekContent = loading ? (
     <div className="sheet-peek-summary muted">
       <div className="sheet-peek-time">Routing…</div>
@@ -328,7 +328,7 @@ export default function App() {
       <div className="top-card">
         <div className="brand-row">
           <span className="brand-mark" aria-hidden="true">🦮</span>
-          <span className="brand-title">Accessible Walk · Belfast</span>
+          <span className="brand-title">SafeStep · Belfast</span>
         </div>
         <DirectionsBar
           startQuery={startQuery}
