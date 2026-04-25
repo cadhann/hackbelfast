@@ -1,8 +1,8 @@
 import { offsetWaypoint } from '../utils/geo';
 import { friendlyFetchError } from './http';
 
-const ROUTE_OFFSETS_METERS = [0, 600, -600, 1200, -1200, 2000, -2000];
-const MAX_UNIQUE_ROUTES = 6;
+const ROUTE_OFFSETS_METERS = [0, 800, -800, 1600, -1600];
+const MAX_UNIQUE_ROUTES = 3;
 const ROUTING_BASE_URL = 'https://routing.openstreetmap.de/routed-foot/route/v1/driving';
 
 function normalizeRoute(route) {
@@ -56,7 +56,7 @@ function routeFingerprint(coords) {
   const parts = [];
   for (let i = 0; i < coords.length; i += step) {
     const [lat, lon] = coords[i];
-    parts.push(`${lat.toFixed(4)},${lon.toFixed(4)}`);
+    parts.push(`${lat.toFixed(3)},${lon.toFixed(3)}`);
   }
   return parts.join('|');
 }
