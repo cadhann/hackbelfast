@@ -23,11 +23,7 @@ export default function RouteModeCards({
     modePicksByIndex.get(mode.routeIndex).push(mode);
   }
 
-  const visible = candidates
-    .map((c, i) => ({ c, i }))
-    .filter(({ c }) => !c.blocked);
-
-  if (visible.length === 0) return null;
+  const visible = candidates.map((c, i) => ({ c, i }));
 
   return (
     <div className="mode-section">
@@ -44,9 +40,10 @@ export default function RouteModeCards({
             <button
               key={i}
               type="button"
-              className={`route-option${isSelected ? ' selected' : ''}`}
-              onClick={() => onSelectRoute(i)}
+              className={`route-option${isSelected ? ' selected' : ''}${c.blocked ? ' restricted' : ''}`}
+              onClick={() => !c.blocked && onSelectRoute(i)}
               aria-pressed={isSelected}
+              aria-disabled={c.blocked || undefined}
             >
               <div className="route-option-main">
                 <div className="route-option-time">{formatDuration(c.route.duration)}</div>
@@ -64,8 +61,9 @@ export default function RouteModeCards({
                 )}
               </div>
               <div className="route-option-side">
-                {isRecommended && <span className="route-pill recommended">Recommended</span>}
-                {isSelected && <span className="route-pill selected">Selected</span>}
+                {isRecommended && !c.blocked && <span className="route-pill recommended">Recommended</span>}
+                {isSelected && !c.blocked && <span className="route-pill selected">Selected</span>}
+                {c.blocked && <span className="route-pill warn">Restricted</span>}
               </div>
             </button>
           );

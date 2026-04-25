@@ -505,6 +505,12 @@ html, body, #root {
   transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
 }
 .route-option:hover { border-color: #b8bdc4; background: var(--gm-surface); }
+.route-option.restricted {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: var(--gm-surface);
+}
+.route-option.restricted:hover { border-color: var(--gm-border); background: var(--gm-surface); }
 .route-option.selected {
   border-color: var(--gm-blue);
   background: #e8f0fe;
