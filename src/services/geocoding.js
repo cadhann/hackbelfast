@@ -73,6 +73,19 @@ function normalizeWhitespace(value) {
   return `${value || ''}`.replace(/\s+/g, ' ').trim();
 }
 
+function normalizeSearchText(value) {
+  return normalizeWhitespace(value)
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function tokenizeSearchText(value) {
+  const normalized = normalizeSearchText(value);
+  return normalized ? normalized.split(' ') : [];
+}
+
 function humanizeToken(value) {
   const cleaned = normalizeWhitespace(value)
     .replace(/_/g, ' ')
@@ -309,7 +322,7 @@ async function fetchFirstSuccessful(pathname, params, timeoutMs, signal) {
 
 function resultDedupeKey(result) {
   return [
-    normalizeWhitespace(result.name).toLowerCase(),
+    normalizeSearchText(result.name),
     Number(result.lat).toFixed(5),
     Number(result.lng).toFixed(5)
   ].join('|');
@@ -328,20 +341,68 @@ function dedupeResults(results) {
   return unique;
 }
 
+function tokenPrefixSequenceScore(queryTokens, candidateTokens) {
+  if (queryTokens.length === 0 || candidateTokens.length < queryTokens.length) return Infinity;
+  let best = Infinity;
+  for (let startIndex = 0; startIndex <= candidateTokens.length - queryTokens.length; startIndex += 1) {
+    let matched = true;
+    let penalty = startIndex > 0 ? 1 : 0;
+    for (let index = 0; index < queryTokens.length; index += 1) {
+      if (!candidateTokens[startIndex + index].startsWith(queryTokens[index])) {
+        matched = false;
+        break;
+      }
+      if (candidateTokens[startIndex + index] !== queryTokens[index]) penalty += 1;
+    }
+    if (matched && penalty < best) best = penalty;
+  }
+  return best;
+}
+
 function scoreSeedMatch(result, query) {
-  const q = normalizeWhitespace(query).toLowerCase();
+  const q = normalizeSearchText(query);
   if (!q) return 0;
-  const aliases = (DESTINATIONS.find(item => item.id === result.id)?.aliases || []).map(alias => alias.toLowerCase());
-  const name = result.name.toLowerCase();
-  const type = result.type.toLowerCase();
-  const area = result.area.toLowerCase();
-  const haystack = [name, type, area, ...aliases].join(' ');
-  const words = q.split(' ').filter(Boolean);
-  if (name === q || aliases.includes(q)) return 0;
+
+  const seedDestination = DESTINATIONS.find(item => item.id === result.id);
+  const aliases = (seedDestination?.aliases || []).map(normalizeSearchText).filter(Boolean);
+  const queryTokens = tokenizeSearchText(q);
+  const name = normalizeSearchText(result.name);
+  const type = normalizeSearchText(result.type);
+  const area = normalizeSearchText(result.area);
+  const directFields = [name, ...aliases];
+  const contextualFields = [
+    area,
+    type,
+    `${name} ${area}`.trim(),
+    `${name} ${type}`.trim(),
+    `${name} ${area} ${type}`.trim(),
+    ...aliases.map(alias => `${alias} ${area}`.trim())
+  ].filter(Boolean);
+
+  if (directFields.includes(q)) return 0;
   if (name.startsWith(q)) return 1;
   if (aliases.some(alias => alias.startsWith(q))) return 2;
-  if (words.every(word => haystack.includes(word))) return 3;
-  if (haystack.includes(q)) return 4;
+
+  const directTokenScore = tokenPrefixSequenceScore(queryTokens, tokenizeSearchText(name));
+  if (Number.isFinite(directTokenScore)) return 3 + directTokenScore;
+
+  const aliasTokenScore = aliases.reduce((best, alias) => {
+    const score = tokenPrefixSequenceScore(queryTokens, tokenizeSearchText(alias));
+    return score < best ? score : best;
+  }, Infinity);
+  if (Number.isFinite(aliasTokenScore)) return 6 + aliasTokenScore;
+
+  const contextualTokenScore = contextualFields.reduce((best, field) => {
+    const score = tokenPrefixSequenceScore(queryTokens, tokenizeSearchText(field));
+    return score < best ? score : best;
+  }, Infinity);
+  if (Number.isFinite(contextualTokenScore)) return 9 + contextualTokenScore;
+
+  if (contextualFields.some(field => field.includes(q))) return 20;
+
+  const haystack = [...directFields, ...contextualFields].join(' ');
+  if (queryTokens.every(token => haystack.includes(token))) return 24;
+
   return Infinity;
 }
 

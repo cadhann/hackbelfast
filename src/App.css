@@ -101,7 +101,7 @@ html, body, #root {
   top: calc(env(safe-area-inset-top, 0) + 8px);
   left: 8px;
   right: 8px;
-  z-index: 1000;
+  z-index: 1150;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -128,6 +128,7 @@ html, body, #root {
 
 .directions-bar {
   position: relative;
+  isolation: isolate;
   background: var(--gm-bg);
   border-radius: var(--gm-radius-lg);
   box-shadow: var(--gm-shadow-2);
@@ -234,6 +235,8 @@ html, body, #root {
 
 .dir-results {
   grid-column: 1 / -1;
+  position: relative;
+  z-index: 1;
   background: var(--gm-bg);
   margin: 0 -8px -8px -36px;
   border-top: 1px solid var(--gm-border);

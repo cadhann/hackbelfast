@@ -74,6 +74,15 @@ export const BELFAST_DEMO_LANDMARKS = [
     aliases: ['rvh', 'royal hospital']
   },
   {
+    id: 'belfast-city-hospital',
+    name: 'Belfast City Hospital',
+    type: 'Hospital',
+    area: 'Lisburn Road',
+    lat: 54.5878,
+    lng: -5.9408,
+    aliases: ['city hospital', 'bch', 'lisburn road hospital']
+  },
+  {
     id: 'belfast-met-titanic-quarter',
     name: 'Belfast Met Titanic Quarter',
     type: 'Campus',
