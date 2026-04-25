@@ -109,7 +109,7 @@ function pickPrimaryError(settled) {
 
 export async function fetchRoutes(start, end, { signal } = {}) {
   if (signal?.aborted) throw new Error('Request cancelled');
-  const offsets = [0, 300, -300];
+  const offsets = [0, 600, -600, 1200, -1200, 2000, -2000];
   const tasks = offsets.map(off => {
     if (off === 0) return fetchOsrm([start, end]);
     const via = offsetWaypoint(start, end, off);
