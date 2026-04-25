@@ -11,6 +11,15 @@ export default defineConfig({
         target: 'https://overpass-api.de',
         changeOrigin: true,
         rewrite: path => path.replace(/^\/api\/overpass/, '/api/interpreter')
+      },
+      '/api/geocode': {
+        target: 'https://nominatim.openstreetmap.org',
+        changeOrigin: true,
+        headers: {
+          'User-Agent': 'accessible-walk-nav dev proxy',
+          Referer: 'http://localhost:5173/'
+        },
+        rewrite: path => path.replace(/^\/api\/geocode/, '')
       }
     }
   }
