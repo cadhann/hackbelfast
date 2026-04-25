@@ -496,9 +496,28 @@ function formatDuration(s) {
   return `${Math.floor(min / 60)} h ${min % 60} min`;
 }
 
+function searchDestinations(query) {
+  const q = query.trim().toLowerCase();
+  const matches = q
+    ? DESTINATIONS.filter(d => {
+        const haystack = [d.name, d.type, d.area, ...(d.aliases || [])].join(' ').toLowerCase();
+        return haystack.includes(q);
+      })
+    : DESTINATIONS;
+  return matches.slice(0, 5);
+}
+
+function samePoint(a, b) {
+  if (!a || !b) return false;
+  return Math.abs(a.lat - b.lat) < 0.00001 && Math.abs(a.lng - b.lng) < 0.00001;
+}
+
 export default function App() {
   const [start, setStart] = useState(null);
   const [end, setEnd] = useState(null);
+  const [startQuery, setStartQuery] = useState('');
+  const [startSearchOpen, setStartSearchOpen] = useState(false);
+  const [selectedStart, setSelectedStart] = useState(null);
   const [destinationQuery, setDestinationQuery] = useState('');
   const [destinationSearchOpen, setDestinationSearchOpen] = useState(false);
   const [selectedDestination, setSelectedDestination] = useState(null);
@@ -517,27 +536,67 @@ export default function App() {
 
   const handleMapClick = (latlng) => {
     setError(null); setWarning(null);
-    if (!start) setStart(latlng);
+    setStartSearchOpen(false); setDestinationSearchOpen(false);
+    if (!start) {
+      setStart(latlng);
+      setSelectedStart(null);
+      setStartQuery('');
+    }
     else if (!end) {
+      if (samePoint(start, latlng)) {
+        setError('Start and destination must be different places.');
+        return;
+      }
       setEnd(latlng);
       setSelectedDestination(null);
       setDestinationQuery('');
     }
     else {
       setStart(latlng); setEnd(null);
+      setSelectedStart(null);
+      setStartQuery('');
       setSelectedDestination(null);
       setDestinationQuery('');
       setRoutes([]); setAccData({ nodes: [], busyWays: [] });
     }
   };
 
+  const selectStart = (destination) => {
+    if (selectedDestination?.id === destination.id || samePoint(destination, end)) {
+      setError('Start and destination must be different places.');
+      return;
+    }
+    setStart({ lat: destination.lat, lng: destination.lng });
+    setSelectedStart(destination);
+    setStartQuery(destination.name);
+    setStartSearchOpen(false);
+    setDestinationSearchOpen(false);
+    setError(null); setWarning(null);
+    setRoutes([]); setAccData({ nodes: [], busyWays: [] });
+  };
+
   const selectDestination = (destination) => {
+    if (selectedStart?.id === destination.id || samePoint(destination, start)) {
+      setError('Start and destination must be different places.');
+      return;
+    }
     setEnd({ lat: destination.lat, lng: destination.lng });
     setSelectedDestination(destination);
     setDestinationQuery(destination.name);
     setDestinationSearchOpen(false);
+    setStartSearchOpen(false);
     setError(null); setWarning(null);
     setRoutes([]); setAccData({ nodes: [], busyWays: [] });
+  };
+
+  const clearStart = () => {
+    setStart(null);
+    setSelectedStart(null);
+    setStartQuery('');
+    setStartSearchOpen(false);
+    setDestinationSearchOpen(false);
+    setRoutes([]); setAccData({ nodes: [], busyWays: [] });
+    setError(null); setWarning(null);
   };
 
   const clearDestination = () => {
@@ -545,18 +604,25 @@ export default function App() {
     setSelectedDestination(null);
     setDestinationQuery('');
     setDestinationSearchOpen(false);
+    setStartSearchOpen(false);
     setRoutes([]); setAccData({ nodes: [], busyWays: [] });
     setError(null); setWarning(null);
   };
 
   const reset = () => {
     setStart(null); setEnd(null); setRoutes([]);
+    setSelectedStart(null); setStartQuery(''); setStartSearchOpen(false);
     setSelectedDestination(null); setDestinationQuery(''); setDestinationSearchOpen(false);
     setAccData({ nodes: [], busyWays: [] }); setError(null); setWarning(null);
   };
 
   const computeRoute = async () => {
     if (!start || !end) return;
+    if (samePoint(start, end)) {
+      setError('Start and destination must be different places.');
+      setRoutes([]); setAccData({ nodes: [], busyWays: [] });
+      return;
+    }
     setLoading(true); setError(null); setWarning(null);
     try {
       const rs = await fetchRoutes(start, end);
@@ -589,16 +655,8 @@ export default function App() {
     return routes.map(r => ({ route: r, ...scoreRoute(r, accData, filters) }));
   }, [routes, accData, filters]);
 
-  const destinationResults = useMemo(() => {
-    const q = destinationQuery.trim().toLowerCase();
-    const matches = q
-      ? DESTINATIONS.filter(d => {
-          const haystack = [d.name, d.type, d.area, ...(d.aliases || [])].join(' ').toLowerCase();
-          return haystack.includes(q);
-        })
-      : DESTINATIONS;
-    return matches.slice(0, 5);
-  }, [destinationQuery]);
+  const startResults = useMemo(() => searchDestinations(startQuery), [startQuery]);
+  const destinationResults = useMemo(() => searchDestinations(destinationQuery), [destinationQuery]);
 
   const chosenIndex = useMemo(() => {
     if (scored.length === 0) return -1;
@@ -653,6 +711,54 @@ export default function App() {
         )}
 
         <div className="section">
+          <h2>Start search</h2>
+          <label className="field-label" htmlFor="start-search">
+            Search venues, stations, stops, or landmarks
+          </label>
+          <input
+            id="start-search"
+            className="destination-input"
+            type="search"
+            value={startQuery}
+            placeholder="Try Queen's, City Hall, Lanyon Place..."
+            autoComplete="off"
+            onChange={(e) => {
+              setStartQuery(e.target.value);
+              setStartSearchOpen(true);
+              setDestinationSearchOpen(false);
+              setSelectedStart(null);
+            }}
+            onFocus={() => {
+              setStartSearchOpen(true);
+              setDestinationSearchOpen(false);
+            }}
+          />
+          {startSearchOpen && (
+            <div className="destination-results" role="list" aria-label="Start suggestions">
+              {startResults.length > 0 ? startResults.map(destination => (
+                <button
+                  key={destination.id}
+                  type="button"
+                  className="destination-result"
+                  disabled={selectedDestination?.id === destination.id || samePoint(destination, end)}
+                  onClick={() => selectStart(destination)}
+                >
+                  <span className="destination-name">{destination.name}</span>
+                  <span className="destination-meta">{destination.type} · {destination.area}</span>
+                </button>
+              )) : (
+                <div className="destination-empty">No seeded Belfast start point found.</div>
+              )}
+            </div>
+          )}
+          <div className="destination-actions">
+            <button className="btn" type="button" onClick={clearStart} disabled={!start && !startQuery}>
+              Clear start
+            </button>
+          </div>
+        </div>
+
+        <div className="section">
           <h2>Destination search</h2>
           <label className="field-label" htmlFor="destination-search">
             Search venues, stations, stops, or landmarks
@@ -667,9 +773,13 @@ export default function App() {
             onChange={(e) => {
               setDestinationQuery(e.target.value);
               setDestinationSearchOpen(true);
+              setStartSearchOpen(false);
               setSelectedDestination(null);
             }}
-            onFocus={() => setDestinationSearchOpen(true)}
+            onFocus={() => {
+              setDestinationSearchOpen(true);
+              setStartSearchOpen(false);
+            }}
           />
           {destinationSearchOpen && (
             <div className="destination-results" role="list" aria-label="Destination suggestions">
@@ -678,6 +788,7 @@ export default function App() {
                   key={destination.id}
                   type="button"
                   className="destination-result"
+                  disabled={selectedStart?.id === destination.id || samePoint(destination, start)}
                   onClick={() => selectDestination(destination)}
                 >
                   <span className="destination-name">{destination.name}</span>
@@ -700,7 +811,16 @@ export default function App() {
           <div className="point-row">
             <span className="point-dot start" aria-hidden="true" />
             <span className="point-coords">
-              {start ? `${start.lat.toFixed(5)}, ${start.lng.toFixed(5)}` : <span className="point-empty">click map to set start</span>}
+              {start
+                ? selectedStart
+                  ? (
+                      <>
+                        <strong>{selectedStart.name}</strong>
+                        <span className="point-detail">{selectedStart.area}</span>
+                      </>
+                    )
+                  : `${start.lat.toFixed(5)}, ${start.lng.toFixed(5)}`
+                : <span className="point-empty">search or click map to set start</span>}
             </span>
           </div>
           <div className="point-row">
