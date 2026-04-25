@@ -11,12 +11,12 @@ import { FILTERS } from './config/preferences';
 import { DEFAULT_ROUTE_MODE_ID } from './config/routeModes';
 import { getDemoAccessibilityData } from './data/belfastDemoSeed';
 import { fetchAccessibilityData } from './services/accessibilityData';
+import { coordinateLabel, reverseGeocodePoint, searchPlaces } from './services/geocoding';
 import { buildRouteModes } from './services/routeModes';
 import { cacheKey, getCached, setCached } from './services/routeCache';
 import { fetchRoutes } from './services/routing';
 import { analyzeRoute, getFeatureStats, scoreRouteAnalysis } from './services/routeScoring';
 import { combinedBbox, samePoint } from './utils/geo';
-import { searchDestinations } from './utils/search';
 import './App.css';
 
 const EMPTY_ACC_DATA = {
@@ -36,6 +36,12 @@ const EMPTY_ACC_DATA = {
   steepWays: []
 };
 const MOBILE_BREAKPOINT = 720;
+const SEARCH_DEBOUNCE_MS = 220;
+const EMPTY_SEARCH_STATE = {
+  results: [],
+  loading: false,
+  error: null
+};
 
 function isMobileViewport() {
   if (typeof window === 'undefined') return false;
@@ -48,9 +54,11 @@ export default function App() {
   const [startQuery, setStartQuery] = useState('');
   const [startSearchOpen, setStartSearchOpen] = useState(false);
   const [selectedStart, setSelectedStart] = useState(null);
+  const [startSearchState, setStartSearchState] = useState(EMPTY_SEARCH_STATE);
   const [destinationQuery, setDestinationQuery] = useState('');
   const [destinationSearchOpen, setDestinationSearchOpen] = useState(false);
   const [selectedDestination, setSelectedDestination] = useState(null);
+  const [destinationSearchState, setDestinationSearchState] = useState(EMPTY_SEARCH_STATE);
   const [routes, setRoutes] = useState([]);
   const [accData, setAccData] = useState(EMPTY_ACC_DATA);
   const [loading, setLoading] = useState(false);
@@ -77,6 +85,14 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(!isMobileViewport());
 
   const requestIdRef = useRef(0);
+  const startSearchReqRef = useRef(0);
+  const destinationSearchReqRef = useRef(0);
+  const startReverseReqRef = useRef(0);
+  const destinationReverseReqRef = useRef(0);
+  const startSearchAbortRef = useRef(null);
+  const destinationSearchAbortRef = useRef(null);
+  const startReverseAbortRef = useRef(null);
+  const destinationReverseAbortRef = useRef(null);
 
   useEffect(() => {
     const onResize = () => {
@@ -91,6 +107,34 @@ export default function App() {
     setAccData(EMPTY_ACC_DATA);
   };
 
+  const cancelRouteRequest = () => {
+    requestIdRef.current += 1;
+    setLoading(false);
+  };
+
+  const resetRouteData = () => {
+    cancelRouteRequest();
+    clearRouteData();
+  };
+
+  const invalidateStartLookups = () => {
+    startSearchReqRef.current += 1;
+    startReverseReqRef.current += 1;
+    startSearchAbortRef.current?.abort();
+    startSearchAbortRef.current = null;
+    startReverseAbortRef.current?.abort();
+    startReverseAbortRef.current = null;
+  };
+
+  const invalidateDestinationLookups = () => {
+    destinationSearchReqRef.current += 1;
+    destinationReverseReqRef.current += 1;
+    destinationSearchAbortRef.current?.abort();
+    destinationSearchAbortRef.current = null;
+    destinationReverseAbortRef.current?.abort();
+    destinationReverseAbortRef.current = null;
+  };
+
   const closeSearches = () => {
     setStartSearchOpen(false);
     setDestinationSearchOpen(false);
@@ -100,28 +144,102 @@ export default function App() {
     setError('Start and destination must be different places.');
   };
 
+  const buildPinnedResult = (idPrefix, point) => ({
+    id: `${idPrefix}:${point.lat.toFixed(5)},${point.lng.toFixed(5)}`,
+    name: coordinateLabel(point),
+    type: 'Dropped pin',
+    area: 'Belfast',
+    lat: point.lat,
+    lng: point.lng,
+    source: 'map'
+  });
+
+  const resolveStartLabel = async (point) => {
+    const seq = ++startReverseReqRef.current;
+    const controller = new AbortController();
+    startReverseAbortRef.current?.abort();
+    startReverseAbortRef.current = controller;
+    setStartQuery('Looking up Belfast location…');
+    setSelectedStart(null);
+    try {
+      const resolved = await reverseGeocodePoint(point, { signal: controller.signal });
+      if (seq !== startReverseReqRef.current) return;
+      const nextResult = resolved || buildPinnedResult('pin-start', point);
+      setSelectedStart(nextResult);
+      setStartQuery(nextResult.name);
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
+      if (seq !== startReverseReqRef.current) return;
+      const fallback = buildPinnedResult('pin-start', point);
+      setSelectedStart(fallback);
+      setStartQuery(fallback.name);
+    } finally {
+      if (startReverseAbortRef.current === controller) {
+        startReverseAbortRef.current = null;
+      }
+    }
+  };
+
+  const resolveDestinationLabel = async (point) => {
+    const seq = ++destinationReverseReqRef.current;
+    const controller = new AbortController();
+    destinationReverseAbortRef.current?.abort();
+    destinationReverseAbortRef.current = controller;
+    setDestinationQuery('Looking up Belfast location…');
+    setSelectedDestination(null);
+    try {
+      const resolved = await reverseGeocodePoint(point, { signal: controller.signal });
+      if (seq !== destinationReverseReqRef.current) return;
+      const nextResult = resolved || buildPinnedResult('pin-destination', point);
+      setSelectedDestination(nextResult);
+      setDestinationQuery(nextResult.name);
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
+      if (seq !== destinationReverseReqRef.current) return;
+      const fallback = buildPinnedResult('pin-destination', point);
+      setSelectedDestination(fallback);
+      setDestinationQuery(fallback.name);
+    } finally {
+      if (destinationReverseAbortRef.current === controller) {
+        destinationReverseAbortRef.current = null;
+      }
+    }
+  };
+
   const handleMapClick = (latlng) => {
-    setError(null); setWarning(null);
+    setError(null);
+    setWarning(null);
     closeSearches();
     if (isMobileViewport()) setSidebarOpen(false);
+
     if (!start) {
+      invalidateStartLookups();
+      resetRouteData();
       setStart(latlng);
-      setSelectedStart(null);
-      setStartQuery('');
-    } else if (!end) {
+      resolveStartLabel(latlng);
+      return;
+    }
+
+    if (!end) {
       if (samePoint(start, latlng)) {
         rejectSamePoint();
         return;
       }
+      invalidateDestinationLookups();
+      resetRouteData();
       setEnd(latlng);
-      setSelectedDestination(null);
-      setDestinationQuery('');
-    } else {
-      setStart(latlng); setEnd(null);
-      setSelectedStart(null); setStartQuery('');
-      setSelectedDestination(null); setDestinationQuery('');
-      clearRouteData();
+      resolveDestinationLabel(latlng);
+      return;
     }
+
+    invalidateStartLookups();
+    invalidateDestinationLookups();
+    resetRouteData();
+    setStart(latlng);
+    setEnd(null);
+    setSelectedDestination(null);
+    setDestinationQuery('');
+    resolveStartLabel(latlng);
   };
 
   const selectStart = (destination) => {
@@ -129,12 +247,14 @@ export default function App() {
       rejectSamePoint();
       return;
     }
+    invalidateStartLookups();
     setStart({ lat: destination.lat, lng: destination.lng });
     setSelectedStart(destination);
     setStartQuery(destination.name);
+    setStartSearchState(EMPTY_SEARCH_STATE);
     closeSearches();
     setError(null); setWarning(null);
-    clearRouteData();
+    resetRouteData();
   };
 
   const selectDestination = (destination) => {
@@ -142,38 +262,48 @@ export default function App() {
       rejectSamePoint();
       return;
     }
+    invalidateDestinationLookups();
     setEnd({ lat: destination.lat, lng: destination.lng });
     setSelectedDestination(destination);
     setDestinationQuery(destination.name);
+    setDestinationSearchState(EMPTY_SEARCH_STATE);
     closeSearches();
     setError(null); setWarning(null);
-    clearRouteData();
+    resetRouteData();
   };
 
   const clearStart = () => {
+    invalidateStartLookups();
     setStart(null);
     setSelectedStart(null);
     setStartQuery('');
+    setStartSearchState(EMPTY_SEARCH_STATE);
     closeSearches();
-    clearRouteData();
+    resetRouteData();
     setError(null); setWarning(null);
   };
 
   const clearDestination = () => {
+    invalidateDestinationLookups();
     setEnd(null);
     setSelectedDestination(null);
     setDestinationQuery('');
+    setDestinationSearchState(EMPTY_SEARCH_STATE);
     closeSearches();
-    clearRouteData();
+    resetRouteData();
     setError(null); setWarning(null);
   };
 
   const reset = () => {
+    invalidateStartLookups();
+    invalidateDestinationLookups();
     setStart(null); setEnd(null);
     setSelectedStart(null); setStartQuery('');
     setSelectedDestination(null); setDestinationQuery('');
+    setStartSearchState(EMPTY_SEARCH_STATE);
+    setDestinationSearchState(EMPTY_SEARCH_STATE);
     closeSearches();
-    clearRouteData();
+    resetRouteData();
     setError(null); setWarning(null);
   };
 
@@ -190,6 +320,7 @@ export default function App() {
 
     const cached = getCached(key);
     if (cached) {
+      setLoading(false);
       setRoutes(cached.routes);
       setAccData(cached.accData);
       setError(null);
@@ -234,13 +365,94 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [start, end]);
 
+  useEffect(() => {
+    if (!startSearchOpen) return;
+
+    const seq = ++startSearchReqRef.current;
+    const controller = new AbortController();
+    const delayMs = startQuery.trim().length >= 3 ? SEARCH_DEBOUNCE_MS : 0;
+    startSearchAbortRef.current?.abort();
+    startSearchAbortRef.current = controller;
+    setStartSearchState(prev => ({ ...prev, loading: true, error: null }));
+    const timer = setTimeout(() => {
+      searchPlaces(startQuery, { signal: controller.signal })
+        .then(({ results, warning }) => {
+          if (seq !== startSearchReqRef.current) return;
+          setStartSearchState({
+            results,
+            loading: false,
+            error: warning
+          });
+        })
+        .catch(error => {
+          if (error?.name === 'AbortError' || seq !== startSearchReqRef.current) return;
+          setStartSearchState({
+            results: [],
+            loading: false,
+            error: error.message
+          });
+        });
+    }, delayMs);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+      if (startSearchAbortRef.current === controller) {
+        startSearchAbortRef.current = null;
+      }
+    };
+  }, [startQuery, startSearchOpen]);
+
+  useEffect(() => {
+    if (!destinationSearchOpen) return;
+
+    const seq = ++destinationSearchReqRef.current;
+    const controller = new AbortController();
+    const delayMs = destinationQuery.trim().length >= 3 ? SEARCH_DEBOUNCE_MS : 0;
+    destinationSearchAbortRef.current?.abort();
+    destinationSearchAbortRef.current = controller;
+    setDestinationSearchState(prev => ({ ...prev, loading: true, error: null }));
+    const timer = setTimeout(() => {
+      searchPlaces(destinationQuery, { signal: controller.signal })
+        .then(({ results, warning }) => {
+          if (seq !== destinationSearchReqRef.current) return;
+          setDestinationSearchState({
+            results,
+            loading: false,
+            error: warning
+          });
+        })
+        .catch(error => {
+          if (error?.name === 'AbortError' || seq !== destinationSearchReqRef.current) return;
+          setDestinationSearchState({
+            results: [],
+            loading: false,
+            error: error.message
+          });
+        });
+    }, delayMs);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+      if (destinationSearchAbortRef.current === controller) {
+        destinationSearchAbortRef.current = null;
+      }
+    };
+  }, [destinationQuery, destinationSearchOpen]);
+
+  useEffect(() => () => {
+    requestIdRef.current += 1;
+    startSearchAbortRef.current?.abort();
+    destinationSearchAbortRef.current?.abort();
+    startReverseAbortRef.current?.abort();
+    destinationReverseAbortRef.current?.abort();
+  }, []);
+
   const routeAnalyses = useMemo(() => {
     return routes.map(route => analyzeRoute(route, accData));
   }, [routes, accData]);
   const routeModes = useMemo(() => buildRouteModes(routeAnalyses, filters), [routeAnalyses, filters]);
-
-  const startResults = useMemo(() => searchDestinations(startQuery), [startQuery]);
-  const destinationResults = useMemo(() => searchDestinations(destinationQuery), [destinationQuery]);
 
   const recommendedMode = useMemo(() => {
     return routeModes.find(m => m.id === selectedModeId)
@@ -280,10 +492,17 @@ export default function App() {
     : null;
 
   const swapPoints = () => {
+    invalidateStartLookups();
+    invalidateDestinationLookups();
     setStart(end); setEnd(start);
     setSelectedStart(selectedDestination); setSelectedDestination(selectedStart);
     setStartQuery(destinationQuery); setDestinationQuery(startQuery);
+    setStartSearchState(EMPTY_SEARCH_STATE);
+    setDestinationSearchState(EMPTY_SEARCH_STATE);
     closeSearches();
+    resetRouteData();
+    setError(null);
+    setWarning(null);
   };
 
   const candidateCount = candidates.filter(c => !c.blocked).length;
@@ -335,30 +554,52 @@ export default function App() {
         <DirectionsBar
           startQuery={startQuery}
           startSearchOpen={startSearchOpen}
-          startResults={startResults}
+          startResults={startSearchState.results}
+          startSearchState={startSearchState.loading ? 'loading' : (startSearchState.error && startSearchState.results.length === 0 ? 'error' : 'ready')}
+          startSearchError={startSearchState.error || ''}
           selectedStart={selectedStart}
           start={start}
           destinationQuery={destinationQuery}
           destinationSearchOpen={destinationSearchOpen}
-          destinationResults={destinationResults}
+          destinationResults={destinationSearchState.results}
+          destinationSearchState={destinationSearchState.loading ? 'loading' : (destinationSearchState.error && destinationSearchState.results.length === 0 ? 'error' : 'ready')}
+          destinationSearchError={destinationSearchState.error || ''}
           selectedDestination={selectedDestination}
           end={end}
           onStartChange={(value) => {
+            invalidateStartLookups();
             setStartQuery(value);
             setStartSearchOpen(true);
             setDestinationSearchOpen(false);
             setSelectedStart(null);
+            setStart(null);
+            setError(null);
+            setWarning(null);
+            resetRouteData();
           }}
           onStartFocus={() => { setStartSearchOpen(true); setDestinationSearchOpen(false); }}
+          onStartSubmit={() => {
+            const first = startSearchState.results.find(result => !(selectedDestination?.id === result.id || samePoint(result, end)));
+            if (first) selectStart(first);
+          }}
           onStartClear={clearStart}
           onSelectStart={selectStart}
           onDestChange={(value) => {
+            invalidateDestinationLookups();
             setDestinationQuery(value);
             setDestinationSearchOpen(true);
             setStartSearchOpen(false);
             setSelectedDestination(null);
+            setEnd(null);
+            setError(null);
+            setWarning(null);
+            resetRouteData();
           }}
           onDestFocus={() => { setDestinationSearchOpen(true); setStartSearchOpen(false); }}
+          onDestSubmit={() => {
+            const first = destinationSearchState.results.find(result => !(selectedStart?.id === result.id || samePoint(result, start)));
+            if (first) selectDestination(first);
+          }}
           onDestClear={clearDestination}
           onSelectDestination={selectDestination}
           onSwap={swapPoints}
