@@ -17,6 +17,27 @@ function getOverpassEndpoints() {
   return isLocalDevHost() ? ['/api/overpass', ...OVERPASS_ENDPOINTS] : OVERPASS_ENDPOINTS;
 }
 
+function isStationNode(tags) {
+  return tags.railway === 'station' || tags.public_transport === 'station' || tags.amenity === 'bus_station';
+}
+
+function isRoughWay(tags) {
+  const surface = (tags.surface || '').toLowerCase();
+  const smoothness = (tags.smoothness || '').toLowerCase();
+  return (
+    ['bad', 'intermediate', 'very_bad', 'horrible', 'very_horrible', 'impassable'].includes(smoothness) ||
+    ['sett', 'cobblestone', 'unpaved', 'gravel', 'compacted', 'ground', 'mud', 'dirt', 'grass', 'woodchips'].includes(surface)
+  );
+}
+
+function isSteepWay(tags) {
+  const incline = (tags.incline || '').toLowerCase().trim();
+  if (!incline) return false;
+  if (['up', 'down', 'steep', 'yes'].includes(incline)) return true;
+  const numeric = Number.parseFloat(incline.replace('%', ''));
+  return Number.isFinite(numeric) && Math.abs(numeric) >= 4;
+}
+
 export async function fetchAccessibilityData(bbox) {
   const [s, w, n, e] = bbox;
   const query = `
@@ -25,6 +46,11 @@ export async function fetchAccessibilityData(bbox) {
       node["highway"="crossing"](${s},${w},${n},${e});
       node["kerb"](${s},${w},${n},${e});
       node["highway"="street_lamp"](${s},${w},${n},${e});
+      node["amenity"="toilets"](${s},${w},${n},${e});
+      node["amenity"="bench"](${s},${w},${n},${e});
+      node["railway"="station"](${s},${w},${n},${e});
+      node["public_transport"="station"](${s},${w},${n},${e});
+      node["amenity"="bus_station"](${s},${w},${n},${e});
       way["highway"~"^(primary|secondary|trunk|primary_link|secondary_link|trunk_link)$"](${s},${w},${n},${e});
       way["highway"~"^(motorway|motorway_link)$"](${s},${w},${n},${e});
       way["foot"~"^(no|private)$"](${s},${w},${n},${e});
@@ -32,6 +58,9 @@ export async function fetchAccessibilityData(bbox) {
       way["highway"="steps"](${s},${w},${n},${e});
       way["highway"~"^(footway|path|pedestrian|sidewalk|residential|service|living_street)$"]["lit"~"^(no|yes)$"](${s},${w},${n},${e});
       way["highway"~"^(footway|path|pedestrian|sidewalk)$"]["width"](${s},${w},${n},${e});
+      way["highway"~"^(footway|path|pedestrian|sidewalk|living_street|residential|service)$"]["surface"](${s},${w},${n},${e});
+      way["highway"~"^(footway|path|pedestrian|sidewalk|living_street|residential|service)$"]["smoothness"](${s},${w},${n},${e});
+      way["highway"~"^(footway|path|pedestrian|sidewalk|living_street|residential|service)$"]["incline"](${s},${w},${n},${e});
     );
     out body geom;
   `;
@@ -81,10 +110,18 @@ export async function fetchAccessibilityData(bbox) {
   const litWays = [];
   const unlitWays = [];
   const narrowWays = [];
+  const toilets = [];
+  const seating = [];
+  const stations = [];
+  const roughWays = [];
+  const steepWays = [];
   for (const el of data.elements || []) {
     if (el.type === 'node') {
       const t = el.tags || {};
       if (t.highway === 'street_lamp') streetLamps.push(el);
+      else if (t.amenity === 'toilets') toilets.push(el);
+      else if (t.amenity === 'bench') seating.push(el);
+      else if (isStationNode(t)) stations.push(el);
       else nodes.push(el);
     } else if (el.type === 'way' && el.geometry) {
       const t = el.tags || {};
@@ -107,8 +144,28 @@ export async function fetchAccessibilityData(bbox) {
       if (Number.isFinite(widthMeters) && widthMeters > 0 && widthMeters < 1.5) {
         narrowWays.push(el);
       }
+      if (isRoughWay(t)) roughWays.push(el);
+      if (isSteepWay(t)) steepWays.push(el);
     }
   }
-  const merged = mergeDemoAccessibilityData({ nodes, busyWays, forbiddenWays, source }, bbox);
-  return { ...merged, streetLamps, stepsWays, litWays, unlitWays, narrowWays };
+  return mergeDemoAccessibilityData(
+    {
+      nodes,
+      busyWays,
+      forbiddenWays,
+      stepsWays,
+      narrowWays,
+      litWays,
+      unlitWays,
+      streetLamps,
+      toilets,
+      seating,
+      stations,
+      communityReports: [],
+      roughWays,
+      steepWays,
+      source
+    },
+    bbox
+  );
 }

@@ -2,7 +2,6 @@ import { PENALTIES } from '../config/preferences';
 import {
   bboxesOverlap,
   haversine,
-  minDistanceToCoords,
   pointToSegmentMeters,
   routeBoundingBox,
   wayBoundingBox
@@ -11,24 +10,134 @@ import {
 const FORBIDDEN_BLOCK_METERS = 120;
 const FORBIDDEN_BLOCK_RATIO = 0.08;
 
-export function classifyFeature(el) {
-  const t = el.tags || {};
-  const tactileYes = t.tactile_paving === 'yes';
-  const tactileNo = t.tactile_paving === 'no';
-  const audioYes = t['traffic_signals:sound'] === 'yes';
-  const audioNo = t['traffic_signals:sound'] === 'no';
-  const lowKerb = t.kerb === 'lowered' || t.kerb === 'flush' || t.kerb === 'no';
-  const highKerb = t.kerb === 'raised';
-  return { tactileYes, tactileNo, audioYes, audioNo, lowKerb, highKerb };
+const ROUGH_SURFACES = new Set([
+  'cobblestone',
+  'cobblestone:flattened',
+  'compacted',
+  'dirt',
+  'earth',
+  'grass',
+  'grass_paver',
+  'gravel',
+  'ground',
+  'mud',
+  'pebblestone',
+  'sand',
+  'sett',
+  'unpaved'
+]);
+
+const SMOOTH_SURFACES = new Set([
+  'asphalt',
+  'concrete',
+  'concrete:lanes',
+  'concrete:plates',
+  'fine_gravel',
+  'paved',
+  'paving_stones'
+]);
+
+const BAD_SMOOTHNESS = new Set(['bad', 'very_bad', 'horrible', 'very_horrible', 'impassable']);
+const GOOD_SMOOTHNESS = new Set(['excellent', 'good', 'intermediate']);
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function getTags(feature) {
+  return feature?.tags || feature?.properties || {};
+}
+
+function getFeaturePoint(feature) {
+  if (!feature) return null;
+  if (Number.isFinite(feature.lat) && Number.isFinite(feature.lon)) return [feature.lat, feature.lon];
+  if (Number.isFinite(feature.lat) && Number.isFinite(feature.lng)) return [feature.lat, feature.lng];
+  if (Number.isFinite(feature.latitude) && Number.isFinite(feature.longitude)) {
+    return [feature.latitude, feature.longitude];
+  }
+  if (Array.isArray(feature.coords) && feature.coords.length === 2) return feature.coords;
+  if (Array.isArray(feature.geometry?.coordinates) && feature.geometry.type === 'Point') {
+    return [feature.geometry.coordinates[1], feature.geometry.coordinates[0]];
+  }
+  return null;
+}
+
+function featureKey(feature, fallbackIndex) {
+  const point = getFeaturePoint(feature);
+  if (feature?.id !== undefined && feature.id !== null) return `id:${feature.id}`;
+  if (feature?.osm_id !== undefined && feature.osm_id !== null) return `osm:${feature.osm_id}`;
+  if (point) return `pt:${point[0].toFixed(6)},${point[1].toFixed(6)}`;
+  const tags = getTags(feature);
+  return `fallback:${tags.name || tags.ref || fallbackIndex}`;
+}
+
+function mergeFeatureArrays(source, keys) {
+  const out = [];
+  const seen = new Set();
+  let fallbackIndex = 0;
+
+  for (const key of keys) {
+    const items = source?.[key];
+    if (!Array.isArray(items)) continue;
+    for (const item of items) {
+      const dedupeKey = featureKey(item, fallbackIndex++);
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      out.push(item);
+    }
+  }
+
+  return out;
+}
+
+function getWayGeometry(way) {
+  if (Array.isArray(way?.geometry)) return way.geometry;
+  if (way?.geometry?.type === 'LineString' && Array.isArray(way.geometry.coordinates)) {
+    return way.geometry.coordinates.map(([lon, lat]) => ({ lat, lon }));
+  }
+  if (Array.isArray(way?.coords)) {
+    return way.coords.map(([lat, lon]) => ({ lat, lon }));
+  }
+  return null;
+}
+
+function minDistanceToRouteMeters(point, coords) {
+  if (!point || coords.length === 0) return Infinity;
+  if (coords.length === 1) return haversine(point, coords[0]);
+
+  let min = Infinity;
+  for (let i = 0; i < coords.length - 1; i++) {
+    const d = pointToSegmentMeters(point, coords[i], coords[i + 1]);
+    if (d < min) min = d;
+    if (min === 0) return 0;
+  }
+  return min;
+}
+
+function pointsNearRoute(items, coords, threshold = 30) {
+  const out = [];
+  for (const item of items) {
+    const point = getFeaturePoint(item);
+    if (!point) continue;
+    const distance = minDistanceToRouteMeters(point, coords);
+    if (distance < threshold) out.push({ item, distance });
+  }
+  return out;
+}
+
+function nearestPointDistance(items, coords) {
+  let min = Infinity;
+  for (const item of items) {
+    const point = getFeaturePoint(item);
+    if (!point) continue;
+    const distance = minDistanceToRouteMeters(point, coords);
+    if (distance < min) min = distance;
+  }
+  return Number.isFinite(min) ? min : null;
 }
 
 function nodesNearRoute(nodes, coords, threshold = 30) {
-  const out = [];
-  for (const el of nodes) {
-    const d = minDistanceToCoords([el.lat, el.lon], coords);
-    if (d < threshold) out.push(el);
-  }
-  return out;
+  return pointsNearRoute(nodes, coords, threshold).map(entry => entry.item);
 }
 
 function metersOnRouteAlongWays(ways, coords, threshold) {
@@ -37,11 +146,12 @@ function metersOnRouteAlongWays(ways, coords, threshold) {
   const routeBbox = routeBoundingBox(coords);
   const padDeg = (threshold + 5) / 111320;
   const candidates = [];
-  for (const w of ways) {
-    if (!w.geometry || w.geometry.length === 0) continue;
-    const wb = w._bbox || (w._bbox = wayBoundingBox(w));
-    if (!bboxesOverlap(routeBbox, wb, padDeg)) continue;
-    candidates.push(w);
+  for (const way of ways) {
+    const geometry = getWayGeometry(way);
+    if (!geometry || geometry.length === 0) continue;
+    const bbox = way._bbox || (way._bbox = wayBoundingBox({ geometry }));
+    if (!bboxesOverlap(routeBbox, bbox, padDeg)) continue;
+    candidates.push({ way, geometry, bbox });
   }
   if (candidates.length === 0) return 0;
 
@@ -53,17 +163,23 @@ function metersOnRouteAlongWays(ways, coords, threshold) {
     const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
 
     let near = false;
-    for (const w of candidates) {
-      const wb = w._bbox;
-      if (mid[0] < wb.minLat - padDeg || mid[0] > wb.maxLat + padDeg ||
-          mid[1] < wb.minLon - padDeg || mid[1] > wb.maxLon + padDeg) {
+    for (const candidate of candidates) {
+      const bbox = candidate.bbox;
+      if (
+        mid[0] < bbox.minLat - padDeg ||
+        mid[0] > bbox.maxLat + padDeg ||
+        mid[1] < bbox.minLon - padDeg ||
+        mid[1] > bbox.maxLon + padDeg
+      ) {
         continue;
       }
-      const geom = w.geometry;
-      for (let j = 0; j < geom.length - 1; j++) {
-        const segA = [geom[j].lat, geom[j].lon];
-        const segB = [geom[j + 1].lat, geom[j + 1].lon];
-        if (pointToSegmentMeters(mid, segA, segB) < threshold) { near = true; break; }
+      for (let j = 0; j < candidate.geometry.length - 1; j++) {
+        const segA = [candidate.geometry[j].lat, candidate.geometry[j].lon];
+        const segB = [candidate.geometry[j + 1].lat, candidate.geometry[j + 1].lon];
+        if (pointToSegmentMeters(mid, segA, segB) < threshold) {
+          near = true;
+          break;
+        }
       }
       if (near) break;
     }
@@ -97,44 +213,68 @@ function unlitMetersOnRoute(unlitWays, coords, threshold = 14) {
 }
 
 function lampsNearRoute(streetLamps, coords, threshold = 25) {
-  if (!streetLamps || streetLamps.length === 0) return 0;
-  let count = 0;
-  for (const el of streetLamps) {
-    const d = minDistanceToCoords([el.lat, el.lon], coords);
-    if (d < threshold) count++;
-  }
-  return count;
+  return pointsNearRoute(streetLamps, coords, threshold).length;
+}
+
+function parseInclinePercent(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? Math.abs(value) : null;
+
+  const text = String(value).trim().toLowerCase();
+  if (!text) return null;
+  if (text === 'up' || text === 'down') return 6;
+  if (text === 'steep') return 10;
+
+  const numeric = parseFloat(text.replace('%', ''));
+  return Number.isFinite(numeric) ? Math.abs(numeric) : null;
+}
+
+function classifyFeature(el) {
+  const tags = getTags(el);
+  const tactileYes = tags.tactile_paving === 'yes';
+  const tactileNo = tags.tactile_paving === 'no';
+  const audioYes = tags['traffic_signals:sound'] === 'yes';
+  const audioNo = tags['traffic_signals:sound'] === 'no';
+  const lowKerb = tags.kerb === 'lowered' || tags.kerb === 'flush' || tags.kerb === 'no';
+  const highKerb = tags.kerb === 'raised';
+  return { tactileYes, tactileNo, audioYes, audioNo, lowKerb, highKerb };
 }
 
 function collectRouteSignals(near) {
   let crossings = 0;
-  let tactileYes = 0, tactileNo = 0, tactileUnknown = 0;
-  let audioYes = 0, audioNo = 0, audioUnknown = 0;
-  let kerbLow = 0, kerbHigh = 0, kerbUnknown = 0;
+  let tactileYes = 0;
+  let tactileNo = 0;
+  let tactileUnknown = 0;
+  let audioYes = 0;
+  let audioNo = 0;
+  let audioUnknown = 0;
+  let kerbLow = 0;
+  let kerbHigh = 0;
+  let kerbUnknown = 0;
 
   for (const el of near) {
-    const t = el.tags || {};
-    const c = classifyFeature(el);
-    const isCrossing = t.highway === 'crossing';
-    const isSignalised = t.crossing === 'traffic_signals' || t.crossing === 'signals';
+    const tags = getTags(el);
+    const classified = classifyFeature(el);
+    const isCrossing = tags.highway === 'crossing';
+    const isSignalised = tags.crossing === 'traffic_signals' || tags.crossing === 'signals';
 
     if (isCrossing) {
       crossings++;
-      if (c.tactileYes) tactileYes++;
-      else if (c.tactileNo) tactileNo++;
+      if (classified.tactileYes) tactileYes++;
+      else if (classified.tactileNo) tactileNo++;
       else tactileUnknown++;
     }
 
     if (isSignalised) {
-      if (c.audioYes) audioYes++;
-      else if (c.audioNo) audioNo++;
+      if (classified.audioYes) audioYes++;
+      else if (classified.audioNo) audioNo++;
       else audioUnknown++;
     }
 
-    if (isCrossing || t.kerb) {
-      if (c.lowKerb) kerbLow++;
-      else if (c.highKerb) kerbHigh++;
-      else if (t.kerb) kerbUnknown++;
+    if (isCrossing || tags.kerb) {
+      if (classified.lowKerb) kerbLow++;
+      else if (classified.highKerb) kerbHigh++;
+      else if (tags.kerb) kerbUnknown++;
     }
   }
 
@@ -152,27 +292,432 @@ function collectRouteSignals(near) {
   };
 }
 
-function computeIntrinsicScore(signals) {
-  const pos = signals.tactileYes + signals.audioYes + signals.kerbLow;
-  const neg = signals.tactileNo + signals.audioNo + signals.kerbHigh;
-  const total = pos + neg;
-  if (total === 0) return null;
-  const raw = (pos - neg) / total;
-  return Math.max(0, Math.min(1, (raw + 1) / 2));
+function combineExplicitAndDerivedWays(explicitKeys, derivedKey, data, classifier) {
+  const explicit = mergeFeatureArrays(data, explicitKeys);
+  const derived = [];
+  const genericWays = Array.isArray(data?.[derivedKey]) ? data[derivedKey] : [];
+
+  for (const way of genericWays) {
+    const result = classifier(way);
+    if (result) derived.push(way);
+  }
+
+  return mergeFeatureArrays({ combined: [...explicit, ...derived] }, ['combined']);
+}
+
+function isRoughSurfaceWay(way) {
+  const tags = getTags(way);
+  const surface = String(tags.surface || '').toLowerCase();
+  const smoothness = String(tags.smoothness || '').toLowerCase();
+  return ROUGH_SURFACES.has(surface) || BAD_SMOOTHNESS.has(smoothness);
+}
+
+function isSmoothSurfaceWay(way) {
+  const tags = getTags(way);
+  const surface = String(tags.surface || '').toLowerCase();
+  const smoothness = String(tags.smoothness || '').toLowerCase();
+  return SMOOTH_SURFACES.has(surface) || GOOD_SMOOTHNESS.has(smoothness);
+}
+
+function isSteepWay(way) {
+  const tags = getTags(way);
+  const incline = parseInclinePercent(tags.incline ?? tags.grade ?? tags.slope_pct);
+  return incline !== null && incline >= 6;
+}
+
+function isGentleWay(way) {
+  const tags = getTags(way);
+  const incline = parseInclinePercent(tags.incline ?? tags.grade ?? tags.slope_pct);
+  return incline !== null && incline > 0 && incline <= 3;
+}
+
+function classifyAmenityAccessibility(item) {
+  const tags = getTags(item);
+  const wheelchair = String(tags.wheelchair || '').toLowerCase();
+  const stepFree = String(tags.step_free || tags.stepfree || '').toLowerCase();
+  const ramp = String(tags.ramp || '').toLowerCase();
+  const lift = String(tags.lift || '').toLowerCase();
+
+  if (wheelchair === 'yes' || stepFree === 'yes' || ramp === 'yes' || lift === 'yes') return 'accessible';
+  if (wheelchair === 'no' || stepFree === 'no') return 'inaccessible';
+  return 'unknown';
+}
+
+function summarizeToilets(toilets, coords) {
+  const nearby = pointsNearRoute(toilets, coords, 60);
+  let accessibleToiletCount = 0;
+  let inaccessibleToiletCount = 0;
+  let unknownToiletCount = 0;
+
+  for (const entry of nearby) {
+    const status = classifyAmenityAccessibility(entry.item);
+    if (status === 'accessible') accessibleToiletCount++;
+    else if (status === 'inaccessible') inaccessibleToiletCount++;
+    else unknownToiletCount++;
+  }
+
+  return {
+    toiletsNear: nearby.map(entry => entry.item),
+    toiletCount: nearby.length,
+    accessibleToiletCount,
+    inaccessibleToiletCount,
+    unknownToiletCount,
+    nearestToiletMeters: nearestPointDistance(toilets, coords)
+  };
+}
+
+function summarizeSeating(seating, coords) {
+  const nearby = pointsNearRoute(seating, coords, 45);
+  return {
+    seatingNear: nearby.map(entry => entry.item),
+    seatingCount: nearby.length,
+    nearestSeatingMeters: nearestPointDistance(seating, coords)
+  };
+}
+
+function classifyStationAccess(item) {
+  const tags = getTags(item);
+  const wheelchair = String(tags.wheelchair || '').toLowerCase();
+  const stepFree = String(tags.step_free || tags.stepfree || '').toLowerCase();
+  const lift = String(tags.lift || '').toLowerCase();
+  const ramp = String(tags.ramp || '').toLowerCase();
+  const stairs = String(tags.stairs || '').toLowerCase();
+
+  if (wheelchair === 'yes' || stepFree === 'yes' || lift === 'yes' || ramp === 'yes') return 'accessible';
+  if (wheelchair === 'no' || stepFree === 'no' || stairs === 'yes') return 'inaccessible';
+  return 'unknown';
+}
+
+function summarizeStations(stations, coords) {
+  const nearby = pointsNearRoute(stations, coords, 65);
+  let accessibleStationCount = 0;
+  let inaccessibleStationCount = 0;
+  let unknownStationCount = 0;
+
+  for (const entry of nearby) {
+    const status = classifyStationAccess(entry.item);
+    if (status === 'accessible') accessibleStationCount++;
+    else if (status === 'inaccessible') inaccessibleStationCount++;
+    else unknownStationCount++;
+  }
+
+  return {
+    stationAccessNear: nearby.map(entry => entry.item),
+    stationCount: nearby.length,
+    accessibleStationCount,
+    inaccessibleStationCount,
+    unknownStationCount,
+    nearestStationMeters: nearestPointDistance(stations, coords)
+  };
+}
+
+function parseDaysSince(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+
+  const timestamp = Date.parse(String(value));
+  if (!Number.isNaN(timestamp)) {
+    const diff = Date.now() - timestamp;
+    return diff >= 0 ? diff / (1000 * 60 * 60 * 24) : null;
+  }
+
+  const numeric = parseFloat(String(value));
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function classifyCommunityReport(item) {
+  const tags = getTags(item);
+  const status = String(item?.status || tags.status || tags.state || tags.report_status || tags.resolution || '').toLowerCase();
+  const type = String(item?.category || tags.category || tags.type || tags.report_type || tags.report_category || '').toLowerCase();
+  const verifiedValue = String(item?.verification || tags.verification || tags.verified || tags.confirmed || tags.moderated || tags.report_verification || '').toLowerCase();
+  const severityValue = String(item?.severity || tags.severity || tags.priority || tags.report_severity || '').toLowerCase();
+  const freshnessValue = String(item?.freshness || tags.freshness || tags.report_freshness || '').toLowerCase();
+  const days = parseDaysSince(
+    item?.reportedAt ??
+    item?.verifiedAt ??
+    tags.age_days ??
+    tags.days_old ??
+    tags.updated_at ??
+    tags.reported_at ??
+    tags.date
+  );
+
+  const verified = verifiedValue === 'yes' || verifiedValue === 'true' || verifiedValue === 'verified' || verifiedValue === 'confirmed';
+  const resolved = /resolved|cleared|fixed|closed|completed/.test(status);
+  const issue = resolved ? false : /issue|hazard|barrier|closure|blocked|obstruction|surface|lighting|crossing|step|stairs|crowd|complex/.test(type || status);
+  const positive = resolved || /clear|passable|accessible|open/.test(type);
+  const fresh = freshnessValue === 'recent' || (days !== null ? days <= 45 : false);
+  const stale = freshnessValue === 'stale' || (days !== null ? days > 120 : false);
+
+  let severity = 1;
+  if (/critical|high|severe|blocking/.test(severityValue)) severity = 1.5;
+  else if (/low|minor|info/.test(severityValue)) severity = 0.6;
+
+  const freshnessFactor = fresh ? 1.25 : stale ? 0.7 : 1;
+  const verificationFactor = verified ? 1.3 : 0.9;
+
+  return {
+    issue,
+    positive,
+    verified,
+    fresh,
+    stale,
+    ambiguous: !issue && !positive,
+    issueUnits: issue ? severity * freshnessFactor * verificationFactor : 0,
+    clearUnits: positive ? 0.55 * severity * freshnessFactor * verificationFactor : 0
+  };
+}
+
+function summarizeReports(reports, coords) {
+  const nearby = pointsNearRoute(reports, coords, 45);
+  let reportCount = nearby.length;
+  let verifiedReportCount = 0;
+  let reportedReportCount = 0;
+  let freshReportCount = 0;
+  let staleReportCount = 0;
+  let ambiguousReportCount = 0;
+  let reportIssueUnits = 0;
+  let reportClearUnits = 0;
+
+  for (const entry of nearby) {
+    const summary = classifyCommunityReport(entry.item);
+    if (summary.verified) verifiedReportCount++;
+    if (summary.issue && !summary.verified) reportedReportCount++;
+    if (summary.fresh) freshReportCount++;
+    if (summary.stale) staleReportCount++;
+    if (summary.ambiguous) ambiguousReportCount++;
+    reportIssueUnits += summary.issueUnits;
+    reportClearUnits += summary.clearUnits;
+  }
+
+  return {
+    communityReportsNear: nearby.map(entry => entry.item),
+    reportCount,
+    verifiedReportCount,
+    reportedReportCount,
+    freshReportCount,
+    staleReportCount,
+    ambiguousReportCount,
+    reportIssueUnits,
+    reportClearUnits
+  };
+}
+
+function summarizeDecisionPoints(route) {
+  const steps = Array.isArray(route?.steps) ? route.steps : [];
+  let decisionPoints = 0;
+  let complexDecisionPoints = 0;
+  let decisionWeight = 0;
+
+  for (const step of steps) {
+    const instruction = String(step.instruction || '').toLowerCase();
+    const modifier = String(step.modifier || '').toLowerCase();
+    const distance = Number(step.distance || 0);
+
+    if (distance > 0 && distance < 8 && instruction !== 'roundabout' && instruction !== 'fork') {
+      continue;
+    }
+
+    const minor = instruction === 'depart' || instruction === 'arrive' || instruction === 'notification';
+    const straight = instruction === 'continue' && (!modifier || modifier === 'straight');
+    const roadRename = instruction === 'new name';
+    if (minor || straight || roadRename) continue;
+
+    decisionPoints++;
+    let weight = 1;
+    if (
+      instruction === 'roundabout' ||
+      instruction === 'rotary' ||
+      instruction === 'fork' ||
+      instruction === 'merge' ||
+      instruction === 'end of road' ||
+      modifier === 'uturn' ||
+      modifier === 'sharp left' ||
+      modifier === 'sharp right'
+    ) {
+      complexDecisionPoints++;
+      weight = 2;
+    } else if (modifier === 'slight left' || modifier === 'slight right') {
+      complexDecisionPoints++;
+      weight = 1.5;
+    }
+    decisionWeight += weight;
+  }
+
+  const perKm = route?.distance > 0 ? decisionWeight / Math.max(route.distance / 1000, 0.25) : 0;
+  let complexityBand = 'low';
+  if (perKm >= 6 || complexDecisionPoints >= 4) complexityBand = 'high';
+  else if (perKm >= 3 || complexDecisionPoints >= 2 || decisionPoints >= 5) complexityBand = 'medium';
+
+  return { decisionPoints, complexDecisionPoints, decisionWeight, decisionDensity: perKm, complexityBand };
+}
+
+function summarizeEvidence(signals, summary) {
+  const knownFromSignals =
+    signals.tactileYes +
+    signals.tactileNo +
+    signals.audioYes +
+    signals.audioNo +
+    signals.kerbLow +
+    signals.kerbHigh;
+
+  const knownFromDerived =
+    summary.toiletCount +
+    summary.seatingCount +
+    summary.accessibleStationCount +
+    summary.inaccessibleStationCount +
+    summary.decisionPoints +
+    summary.complexDecisionPoints +
+    Math.round(summary.busyMeters / 180) +
+    Math.round(summary.stepsMeters / 120) +
+    Math.round(summary.narrowMeters / 120) +
+    Math.round(summary.roughMeters / 120) +
+    Math.round(summary.smoothMeters / 160) +
+    Math.round(summary.steepMeters / 120) +
+    Math.round(summary.gentleMeters / 160);
+
+  const unknown =
+    signals.tactileUnknown +
+    signals.audioUnknown +
+    signals.kerbUnknown +
+    summary.unknownToiletCount +
+    summary.unknownStationCount +
+    summary.ambiguousReportCount;
+
+  return {
+    known: knownFromSignals + knownFromDerived,
+    reported: summary.reportCount,
+    unknown
+  };
+}
+
+function computeIntrinsicScore(signals, summary) {
+  const supportive =
+    signals.tactileYes +
+    signals.audioYes +
+    signals.kerbLow +
+    summary.accessibleToiletCount * 0.75 +
+    summary.toiletCount * 0.15 +
+    summary.seatingCount * 0.35 +
+    summary.accessibleStationCount * 0.9 +
+    summary.smoothMeters / 170 +
+    summary.gentleMeters / 160 +
+    summary.litMeters / 260 +
+    summary.streetLampCount * 0.18 +
+    summary.reportClearUnits;
+
+  const difficult =
+    signals.tactileNo * 1.1 +
+    signals.audioNo +
+    signals.kerbHigh * 1.2 +
+    summary.busyMeters / 180 +
+    summary.forbiddenMeters / 70 +
+    summary.stepsMeters / 50 +
+    summary.narrowMeters / 90 +
+    summary.unlitMeters / 240 +
+    summary.inaccessibleStationCount * 1.2 +
+    summary.roughMeters / 90 +
+    summary.steepMeters / 70 +
+    summary.reportIssueUnits * 1.15 +
+    summary.decisionWeight * 0.25 +
+    summary.complexDecisionPoints * 0.9;
+
+  const total = supportive + difficult;
+  if (total <= 0) return { intrinsicScore: null, supportiveEvidence: 0, difficultEvidence: 0, evidenceTotal: 0 };
+
+  const raw = (supportive - difficult) / total;
+  const confidence = clamp(total / 8, 0.25, 1);
+  const intrinsicScore = clamp(0.5 + raw * 0.5 * confidence, 0, 1);
+
+  return {
+    intrinsicScore,
+    supportiveEvidence: supportive,
+    difficultEvidence: difficult,
+    evidenceTotal: total
+  };
 }
 
 export function analyzeRoute(route, accData) {
-  const near = nodesNearRoute(accData.nodes, route.coords);
+  const nodes = mergeFeatureArrays(accData, ['nodes', 'crossingNodes', 'officialCrossings']);
+  const near = nodesNearRoute(nodes, route.coords);
   const signals = collectRouteSignals(near);
-  const busyMeters = busyMetersOnRoute(accData.busyWays || [], route.coords);
-  const forbiddenMeters = forbiddenMetersOnRoute(accData.forbiddenWays || [], route.coords);
-  const stepsMeters = stepsMetersOnRoute(accData.stepsWays || [], route.coords);
-  const narrowMeters = narrowMetersOnRoute(accData.narrowWays || [], route.coords);
-  const litMeters = litMetersOnRoute(accData.litWays || [], route.coords);
-  const unlitMeters = unlitMetersOnRoute(accData.unlitWays || [], route.coords);
-  const streetLampCount = lampsNearRoute(accData.streetLamps || [], route.coords);
+
+  const busyMeters = busyMetersOnRoute(accData?.busyWays || [], route.coords);
+  const forbiddenMeters = forbiddenMetersOnRoute(accData?.forbiddenWays || [], route.coords);
+  const stepsMeters = stepsMetersOnRoute(accData?.stepsWays || [], route.coords);
+  const narrowMeters = narrowMetersOnRoute(accData?.narrowWays || [], route.coords);
+  const litMeters = litMetersOnRoute(accData?.litWays || [], route.coords);
+  const unlitMeters = unlitMetersOnRoute(accData?.unlitWays || [], route.coords);
+  const streetLampCount = lampsNearRoute(accData?.streetLamps || [], route.coords);
+
+  const roughWays = combineExplicitAndDerivedWays(
+    ['roughWays', 'roughSurfaceWays', 'surfaceRiskWays'],
+    'surfaceWays',
+    accData,
+    isRoughSurfaceWay
+  );
+  const smoothWays = combineExplicitAndDerivedWays(
+    ['smoothSurfaceWays', 'goodSurfaceWays'],
+    'surfaceWays',
+    accData,
+    isSmoothSurfaceWay
+  );
+  const steepWays = combineExplicitAndDerivedWays(
+    ['steepWays'],
+    'slopeWays',
+    accData,
+    isSteepWay
+  );
+  const gentleWays = combineExplicitAndDerivedWays(
+    ['gentleSlopeWays', 'flatWays'],
+    'slopeWays',
+    accData,
+    isGentleWay
+  );
+
+  const roughMeters = metersOnRouteAlongWays(roughWays, route.coords, 10);
+  const smoothMeters = metersOnRouteAlongWays(smoothWays, route.coords, 10);
+  const steepMeters = metersOnRouteAlongWays(steepWays, route.coords, 10);
+  const gentleMeters = metersOnRouteAlongWays(gentleWays, route.coords, 10);
+
+  const toilets = mergeFeatureArrays(accData, ['publicToilets', 'toilets', 'toiletNodes']);
+  const seating = mergeFeatureArrays(accData, ['seating', 'restPoints', 'benches', 'seatingNodes']);
+  const stationAccess = mergeFeatureArrays(accData, ['stations', 'stationAccess', 'stationAccessibility', 'stationEntrances']);
+  const reports = mergeFeatureArrays(accData, ['communityReports', 'issueReports', 'reports']);
+
+  const toiletSummary = summarizeToilets(toilets, route.coords);
+  const seatingSummary = summarizeSeating(seating, route.coords);
+  const stationSummary = summarizeStations(stationAccess, route.coords);
+  const reportSummary = summarizeReports(reports, route.coords);
+  const complexityFromRoute = summarizeDecisionPoints(route);
+
   const blocked = forbiddenMeters > Math.max(FORBIDDEN_BLOCK_METERS, route.distance * FORBIDDEN_BLOCK_RATIO);
-  const intrinsicScore = computeIntrinsicScore(signals);
+
+  const summary = {
+    busyMeters,
+    forbiddenMeters,
+    stepsMeters,
+    narrowMeters,
+    litMeters,
+    unlitMeters,
+    streetLampCount,
+    roughMeters,
+    smoothMeters,
+    steepMeters,
+    gentleMeters,
+    decisionPoints: complexityFromRoute.decisionPoints,
+    complexDecisionPoints: complexityFromRoute.complexDecisionPoints,
+    decisionWeight: complexityFromRoute.decisionWeight,
+    decisionDensity: complexityFromRoute.decisionDensity,
+    complexityBand: complexityFromRoute.complexityBand,
+    ...toiletSummary,
+    ...seatingSummary,
+    ...stationSummary,
+    ...reportSummary
+  };
+
+  const evidenceSummary = summarizeEvidence(signals, summary);
+  const scoreSummary = computeIntrinsicScore(signals, summary);
 
   return {
     route,
@@ -185,8 +730,45 @@ export function analyzeRoute(route, accData) {
     litMeters,
     unlitMeters,
     streetLampCount,
+    roughMeters,
+    smoothMeters,
+    steepMeters,
+    gentleMeters,
+    decisionPoints: complexityFromRoute.decisionPoints,
+    complexDecisionPoints: complexityFromRoute.complexDecisionPoints,
+    decisionWeight: complexityFromRoute.decisionWeight,
+    decisionDensity: complexityFromRoute.decisionDensity,
+    complexityBand: complexityFromRoute.complexityBand,
+    toiletsNear: toiletSummary.toiletsNear,
+    toiletCount: toiletSummary.toiletCount,
+    accessibleToiletCount: toiletSummary.accessibleToiletCount,
+    inaccessibleToiletCount: toiletSummary.inaccessibleToiletCount,
+    unknownToiletCount: toiletSummary.unknownToiletCount,
+    nearestToiletMeters: toiletSummary.nearestToiletMeters,
+    seatingNear: seatingSummary.seatingNear,
+    seatingCount: seatingSummary.seatingCount,
+    nearestSeatingMeters: seatingSummary.nearestSeatingMeters,
+    stationAccessNear: stationSummary.stationAccessNear,
+    stationCount: stationSummary.stationCount,
+    accessibleStationCount: stationSummary.accessibleStationCount,
+    inaccessibleStationCount: stationSummary.inaccessibleStationCount,
+    unknownStationCount: stationSummary.unknownStationCount,
+    nearestStationMeters: stationSummary.nearestStationMeters,
+    communityReportsNear: reportSummary.communityReportsNear,
+    reportCount: reportSummary.reportCount,
+    verifiedReportCount: reportSummary.verifiedReportCount,
+    reportedReportCount: reportSummary.reportedReportCount,
+    freshReportCount: reportSummary.freshReportCount,
+    staleReportCount: reportSummary.staleReportCount,
+    ambiguousReportCount: reportSummary.ambiguousReportCount,
+    reportIssueUnits: reportSummary.reportIssueUnits,
+    reportClearUnits: reportSummary.reportClearUnits,
+    evidenceSummary,
+    supportiveEvidence: scoreSummary.supportiveEvidence,
+    difficultEvidence: scoreSummary.difficultEvidence,
+    evidenceTotal: scoreSummary.evidenceTotal,
     blocked,
-    intrinsicScore
+    intrinsicScore: scoreSummary.intrinsicScore
   };
 }
 
@@ -199,13 +781,26 @@ export function scoreRouteAnalysis(analysis, weights) {
   penalty += analysis.signals.audioNo * PENALTIES.audio_missing * weights.audio;
   penalty += analysis.signals.kerbLow * PENALTIES.kerb_bonus * -weights.kerb;
   penalty += analysis.signals.kerbHigh * PENALTIES.kerb_raised * weights.kerb;
-  penalty += analysis.busyMeters * PENALTIES.busy_per_meter * weights.avoid_busy;
+  penalty += analysis.busyMeters * PENALTIES.busy_per_meter * (weights.avoid_busy || 0);
   penalty += analysis.forbiddenMeters * PENALTIES.forbidden_per_meter * (weights.forbidden || 0);
   penalty += analysis.stepsMeters * PENALTIES.steps_per_meter * (weights.avoid_steps || 0);
   penalty += analysis.narrowMeters * PENALTIES.narrow_per_meter * (weights.pavement_width || 0);
   penalty += analysis.unlitMeters * PENALTIES.unlit_per_meter * (weights.streetlights || 0);
   penalty -= analysis.litMeters * PENALTIES.lit_per_meter_bonus * (weights.streetlights || 0);
   penalty -= analysis.streetLampCount * PENALTIES.lamp_bonus * (weights.streetlights || 0);
+  penalty -= analysis.accessibleToiletCount * PENALTIES.accessible_toilet_bonus * (weights.rest_points || 0);
+  penalty -= analysis.toiletCount * PENALTIES.toilet_bonus * (weights.rest_points || 0);
+  penalty -= analysis.seatingCount * PENALTIES.seating_bonus * (weights.rest_points || 0);
+  penalty -= analysis.accessibleStationCount * PENALTIES.accessible_station_bonus * (weights.station_access || 0);
+  penalty += analysis.inaccessibleStationCount * PENALTIES.inaccessible_station_penalty * (weights.station_access || 0);
+  penalty += analysis.roughMeters * PENALTIES.rough_surface_per_meter * (weights.surface_quality || 0);
+  penalty -= analysis.smoothMeters * PENALTIES.smooth_surface_per_meter_bonus * (weights.surface_quality || 0);
+  penalty += analysis.steepMeters * PENALTIES.steep_per_meter * (weights.gentle_slope || 0);
+  penalty -= analysis.gentleMeters * PENALTIES.gentle_per_meter_bonus * (weights.gentle_slope || 0);
+  penalty += analysis.reportIssueUnits * PENALTIES.report_issue_unit * (weights.verified_reports || 0);
+  penalty -= analysis.reportClearUnits * PENALTIES.report_clear_bonus * (weights.verified_reports || 0);
+  penalty += analysis.decisionWeight * PENALTIES.decision_point_penalty * (weights.simple_navigation || 0);
+  penalty += analysis.complexDecisionPoints * PENALTIES.complex_junction_penalty * (weights.simple_navigation || 0);
 
   return {
     ...analysis,
@@ -217,13 +812,18 @@ export function scoreRouteAnalysis(analysis, weights) {
 
 export function getFeatureStats(chosen) {
   if (!chosen) return { crossings: 0, tactileYes: 0, tactileNo: 0, lowKerbs: 0 };
-  let crossings = 0, tactileYes = 0, tactileNo = 0, lowKerbs = 0;
+  let crossings = 0;
+  let tactileYes = 0;
+  let tactileNo = 0;
+  let lowKerbs = 0;
   for (const el of chosen.near) {
-    const t = el.tags || {};
-    if (t.highway === 'crossing') crossings++;
-    if (t.tactile_paving === 'yes') tactileYes++;
-    if (t.tactile_paving === 'no') tactileNo++;
-    if (t.kerb === 'lowered' || t.kerb === 'flush') lowKerbs++;
+    const tags = getTags(el);
+    if (tags.highway === 'crossing') crossings++;
+    if (tags.tactile_paving === 'yes') tactileYes++;
+    if (tags.tactile_paving === 'no') tactileNo++;
+    if (tags.kerb === 'lowered' || tags.kerb === 'flush') lowKerbs++;
   }
   return { crossings, tactileYes, tactileNo, lowKerbs };
 }
+
+export { classifyFeature };

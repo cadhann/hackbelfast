@@ -11,44 +11,87 @@ export const PENALTIES = {
   narrow_per_meter: 5,
   unlit_per_meter: 3,
   lit_per_meter_bonus: 1,
-  lamp_bonus: 60
+  lamp_bonus: 60,
+  accessible_toilet_bonus: 180,
+  toilet_bonus: 90,
+  seating_bonus: 75,
+  accessible_station_bonus: 220,
+  inaccessible_station_penalty: 220,
+  rough_surface_per_meter: 6,
+  smooth_surface_per_meter_bonus: 1.5,
+  steep_per_meter: 10,
+  gentle_per_meter_bonus: 1.25,
+  report_issue_unit: 180,
+  report_clear_bonus: 90,
+  decision_point_penalty: 40,
+  complex_junction_penalty: 120
 };
 
 export const FILTERS = [
   {
     id: 'tactile',
     title: 'Tactile paving at crossings',
-    desc: 'Penalise crossings without raised paving textures (blind / low vision).'
+    desc: 'Penalise crossings tagged without tactile paving.'
   },
   {
     id: 'audio',
     title: 'Audio + physical crossing cues',
-    desc: 'Penalise crossings tagged as missing audible/vibrating signals.'
+    desc: 'Penalise crossings tagged as missing audible signals.'
   },
   {
     id: 'kerb',
     title: 'Low curbs / dropped kerbs',
-    desc: 'Penalise raised kerbs (wheelchair, stroller, mobility).'
+    desc: 'Penalise raised kerbs on crossings and approaches.'
   },
   {
     id: 'avoid_busy',
     title: 'Avoid busy multi-lane streets',
-    desc: 'Penalise primary/secondary/trunk roads along the route.'
+    desc: 'Penalise primary, trunk, and other busier road links.'
   },
   {
     id: 'avoid_steps',
     title: 'Avoid stairs / steps',
-    desc: 'Strongly penalise highway=steps segments (wheelchair, stroller, cane).'
+    desc: 'Strongly penalise route segments tagged as steps.'
   },
   {
     id: 'pavement_width',
     title: 'Wider pavements',
-    desc: 'Penalise footways tagged narrower than 1.5 m (wheelchair clearance).'
+    desc: 'Penalise narrower footways where width data is available.'
   },
   {
     id: 'streetlights',
     title: 'Well-lit streets',
-    desc: 'Reward street lamps and lit=yes ways; penalise lit=no segments.'
+    desc: 'Reward lit segments and street lamps; penalise unlit stretches.'
+  },
+  {
+    id: 'surface_quality',
+    title: 'Smoother surfaces',
+    desc: 'Penalise rough or uneven surfaces such as setts, gravel, and bad smoothness tags.'
+  },
+  {
+    id: 'gentle_slope',
+    title: 'Gentler gradients',
+    desc: 'Penalise steeper segments and prefer flatter links where known.'
+  },
+  {
+    id: 'simple_navigation',
+    title: 'Simpler route changes',
+    desc: 'Prefer routes with fewer decision points and less junction complexity.'
+  },
+  {
+    id: 'rest_points',
+    title: 'Toilets + seating nearby',
+    desc: 'Reward routes that stay close to toilets and seating where known.'
+  },
+  {
+    id: 'station_access',
+    title: 'Accessible station links',
+    desc: 'Reward routes that stay close to step-free or wheelchair-friendly station access.'
+  },
+  {
+    id: 'verified_reports',
+    title: 'Use route reports cautiously',
+    desc: 'Penalise routes with recent verified issue reports and surface community notes.'
   },
   {
     id: 'avoid_crash',

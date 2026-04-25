@@ -1,3 +1,12 @@
+import {
+  BELFAST_COMMUNITY_REPORTS,
+  BELFAST_ROUGH_WAYS,
+  BELFAST_SEATING,
+  BELFAST_STATIONS,
+  BELFAST_STEEP_WAYS,
+  BELFAST_TOILETS
+} from './belfastAccessibilityFixtures';
+
 export const BELFAST_DEMO_SOURCE = 'belfast_demo_seed';
 
 export const BELFAST_DEMO_LANDMARKS = [
@@ -355,11 +364,45 @@ function dedupeById(items) {
   });
 }
 
+const ACCESSIBILITY_ARRAY_FIELDS = [
+  'nodes',
+  'busyWays',
+  'forbiddenWays',
+  'stepsWays',
+  'narrowWays',
+  'litWays',
+  'unlitWays',
+  'streetLamps',
+  'toilets',
+  'seating',
+  'stations',
+  'communityReports',
+  'roughWays',
+  'steepWays'
+];
+
+function mergeSource(source) {
+  if (!source || source === BELFAST_DEMO_SOURCE) return BELFAST_DEMO_SOURCE;
+  if (source.includes(BELFAST_DEMO_SOURCE)) return source;
+  return `${source} + ${BELFAST_DEMO_SOURCE}`;
+}
+
 export function getDemoAccessibilityData(bbox) {
   return {
     nodes: BELFAST_DEMO_ACCESSIBILITY_NODES.filter(node => pointInsideBbox(node.lat, node.lon, bbox)),
     busyWays: BELFAST_DEMO_BUSY_WAYS.filter(way => wayInsideBbox(way, bbox)),
     forbiddenWays: [],
+    stepsWays: [],
+    narrowWays: [],
+    litWays: [],
+    unlitWays: [],
+    streetLamps: [],
+    toilets: BELFAST_TOILETS.filter(node => pointInsideBbox(node.lat, node.lon, bbox)),
+    seating: BELFAST_SEATING.filter(node => pointInsideBbox(node.lat, node.lon, bbox)),
+    stations: BELFAST_STATIONS.filter(node => pointInsideBbox(node.lat, node.lon, bbox)),
+    communityReports: BELFAST_COMMUNITY_REPORTS.filter(node => pointInsideBbox(node.lat, node.lon, bbox)),
+    roughWays: BELFAST_ROUGH_WAYS.filter(way => wayInsideBbox(way, bbox)),
+    steepWays: BELFAST_STEEP_WAYS.filter(way => wayInsideBbox(way, bbox)),
     source: BELFAST_DEMO_SOURCE,
     seedOnly: true
   };
@@ -367,11 +410,15 @@ export function getDemoAccessibilityData(bbox) {
 
 export function mergeDemoAccessibilityData(data, bbox) {
   const demo = getDemoAccessibilityData(bbox);
+  const merged = {};
+
+  for (const field of ACCESSIBILITY_ARRAY_FIELDS) {
+    merged[field] = dedupeById([...(data[field] || []), ...(demo[field] || [])]);
+  }
+
   return {
-    nodes: dedupeById([...(data.nodes || []), ...demo.nodes]),
-    busyWays: dedupeById([...(data.busyWays || []), ...demo.busyWays]),
-    forbiddenWays: dedupeById([...(data.forbiddenWays || []), ...demo.forbiddenWays]),
-    source: data.source ? `${data.source} + ${BELFAST_DEMO_SOURCE}` : BELFAST_DEMO_SOURCE,
+    ...merged,
+    source: mergeSource(data.source),
     seedOnly: false
   };
 }

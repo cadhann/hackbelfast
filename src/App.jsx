@@ -29,7 +29,13 @@ const EMPTY_ACC_DATA = {
   narrowWays: [],
   litWays: [],
   unlitWays: [],
-  streetLamps: []
+  streetLamps: [],
+  toilets: [],
+  seating: [],
+  stations: [],
+  communityReports: [],
+  roughWays: [],
+  steepWays: []
 };
 const MOBILE_BREAKPOINT = 720;
 
@@ -62,6 +68,12 @@ export default function App() {
     avoid_steps: false,
     pavement_width: false,
     streetlights: false,
+    surface_quality: false,
+    gentle_slope: false,
+    simple_navigation: false,
+    rest_points: false,
+    station_access: false,
+    verified_reports: false,
     avoid_crash: false
   });
   const [sidebarOpen, setSidebarOpen] = useState(!isMobileViewport());
@@ -429,13 +441,16 @@ export default function App() {
         <PreferenceList
           filters={filters}
           filterOptions={FILTERS}
-          onChange={(id, checked) => setFilters(prev => ({ ...prev, [id]: checked }))}
+          onChange={(id, checked) => {
+            setFilters(prev => ({ ...prev, [id]: checked }));
+            setSelectedRouteIndex(null);
+          }}
         />
         <RouteDetails chosen={chosen} selectedMode={selectedMode} featureStats={featureStats} filters={filters} />
         <RouteInstructionCards instructions={routeInstructions} />
         <MapLegend />
         <p className="footnote">
-          Fastest = shortest walk. Balanced applies lighter accessibility weighting. Beacon Accessible uses the full preference set. Crossing data comes from OSM tags within 30 m of the route. Steps, pavement width, and streetlights use nearby OSM way and node tags. Crash data is coming soon.
+          Fastest = shortest walk. Balanced applies lighter accessibility weighting. Beacon Accessible uses the full preference set. Crossing data comes from OSM tags within 30 m of the route. The wider score model can also use nearby steps, pavement width, lighting, surface, gradient, support places, station access, and seeded community reports where known. Unknown data stays unknown rather than being treated as missing.
         </p>
       </BottomSheet>
     </div>

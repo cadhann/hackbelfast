@@ -654,6 +654,22 @@ html, body, #root {
 .stat-label { color: var(--gm-text-muted); }
 .stat-value { color: var(--gm-text); font-weight: 500; }
 
+.detail-subsection-title {
+  color: var(--gm-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin-top: 8px;
+  padding-top: 8px;
+  text-transform: uppercase;
+  border-top: 1px solid #e7eaef;
+}
+.detail-subsection-title:first-of-type {
+  border-top: 0;
+  margin-top: 0;
+  padding-top: 0;
+}
+
 .score-bar {
   height: 6px;
   background: var(--gm-border);
@@ -668,6 +684,43 @@ html, body, #root {
   border-radius: 3px;
 }
 
+.evidence-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.evidence-chip {
+  align-items: center;
+  border: 1px solid var(--gm-border);
+  border-radius: 999px;
+  display: inline-flex;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  line-height: 1;
+}
+.evidence-chip strong {
+  font-size: 12px;
+  font-weight: 700;
+}
+.evidence-chip.known {
+  background: #e6f4ea;
+  border-color: #c6e7cd;
+  color: var(--gm-green);
+}
+.evidence-chip.reported {
+  background: #fef7e0;
+  border-color: #f1dd95;
+  color: #7a5d00;
+}
+.evidence-chip.unknown {
+  background: #f1f3f4;
+  border-color: #e0e3e7;
+  color: var(--gm-text-muted);
+}
+
 .reasons-list {
   margin-top: 8px;
   display: grid;
@@ -675,6 +728,42 @@ html, body, #root {
   font-size: 12px;
   color: var(--gm-text-muted);
   line-height: 1.5;
+}
+
+.detail-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.detail-list-item {
+  background: var(--gm-bg);
+  border: 1px solid #e7eaef;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.detail-list-label {
+  color: var(--gm-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.detail-list-title {
+  color: var(--gm-text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-top: 4px;
+}
+
+.detail-list-note {
+  color: var(--gm-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  margin-top: 4px;
 }
 
 /* ===== Turn-by-turn ===== */
@@ -749,6 +838,10 @@ html, body, #root {
   height: 12px;
   border-radius: 50%;
   flex-shrink: 0;
+}
+.legend-dot.legend-ring {
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px var(--gm-border);
 }
 
 .section-title-note {

@@ -53,6 +53,37 @@ function FeatureMarker({ el }) {
   );
 }
 
+function SupportMarker({ feature, kind }) {
+  const tags = feature.tags || {};
+  const styles = {
+    toilet: { color: '#00897b', label: 'Toilet' },
+    seating: { color: '#ef6c00', label: 'Seating' },
+    station: { color: '#5e35b1', label: 'Station access' },
+    report: { color: '#b3261e', label: 'Route report' }
+  };
+  const style = styles[kind];
+  if (!style) return null;
+
+  const note = feature.summary || tags.fixture_note || tags.report_note || tags.demo_note || tags.demo_issue || null;
+  const name = tags.name || feature.summary || style.label;
+
+  return (
+    <CircleMarker
+      center={[feature.lat, feature.lon]}
+      radius={6}
+      pathOptions={{ color: '#ffffff', fillColor: style.color, fillOpacity: 0.95, weight: 2 }}
+    >
+      <Popup>
+        <div style={{ fontSize: 12 }}>
+          <strong>{name}</strong>
+          <div style={{ color: '#5f6368', marginTop: 4 }}>{style.label}</div>
+          {note && <p style={{ margin: '6px 0 0 0' }}>{note}</p>}
+        </div>
+      </Popup>
+    </CircleMarker>
+  );
+}
+
 export default function JourneyMap({ hint, loading, start, end, scored, chosen, chosenIndex, onMapClick }) {
   return (
     <div className="map-area">
@@ -97,6 +128,10 @@ export default function JourneyMap({ hint, loading, start, end, scored, chosen, 
           </>
         )}
         {chosen && chosen.near.map(el => <FeatureMarker key={el.id} el={el} />)}
+        {chosen && (chosen.toiletsNear || []).map(el => <SupportMarker key={`toilet-${el.id}`} feature={el} kind="toilet" />)}
+        {chosen && (chosen.seatingNear || []).map(el => <SupportMarker key={`seating-${el.id}`} feature={el} kind="seating" />)}
+        {chosen && (chosen.stationAccessNear || []).map(el => <SupportMarker key={`station-${el.id}`} feature={el} kind="station" />)}
+        {chosen && (chosen.communityReportsNear || []).map(el => <SupportMarker key={`report-${el.id}`} feature={el} kind="report" />)}
         {start && (
           <CircleMarker
             center={[start.lat, start.lng]}
