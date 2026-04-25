@@ -27,9 +27,11 @@ function MapSizeFix() {
 
 function FeatureMarker({ el }) {
   const c = classifyFeature(el);
+  const tags = el.tags || {};
   const good = (c.tactileYes ? 1 : 0) + (c.audioYes ? 1 : 0) + (c.lowKerb ? 1 : 0);
   const bad = (c.tactileNo ? 1 : 0) + (c.highKerb ? 1 : 0);
   const color = bad > good ? '#c0392b' : good > 0 ? '#0a8754' : '#f1c40f';
+  const note = tags.demo_issue || tags.demo_note;
   return (
     <CircleMarker
       center={[el.lat, el.lon]}
@@ -38,9 +40,10 @@ function FeatureMarker({ el }) {
     >
       <Popup>
         <div style={{ fontSize: 12 }}>
-          <strong>{(el.tags && el.tags.highway) || 'feature'}</strong>
+          <strong>{tags.name || tags.highway || 'feature'}</strong>
+          {note && <p style={{ margin: '4px 0 0 0' }}>{note}</p>}
           <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
-            {Object.entries(el.tags || {}).map(([k, v]) => (
+            {Object.entries(tags).map(([k, v]) => (
               <li key={k}><code>{k}</code> = {v}</li>
             ))}
           </ul>

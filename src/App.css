@@ -371,6 +371,35 @@
   padding-left: 8px;
 }
 
+.local-note-list {
+  display: grid;
+  gap: 8px;
+}
+
+.local-note {
+  border-left: 3px solid #0066cc;
+  display: grid;
+  gap: 2px;
+  padding-left: 10px;
+}
+
+.local-note-label {
+  color: #5a6573;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.local-note strong {
+  font-size: 13px;
+}
+
+.local-note span:last-child {
+  color: #5a6573;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .score-bar {
   height: 8px;
   background: #e6e9ee;

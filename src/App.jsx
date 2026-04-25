@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import JourneyMap from './components/JourneyMap';
+import LocalContextPanel from './components/LocalContextPanel';
 import MapLegend from './components/MapLegend';
 import PlaceSearch from './components/PlaceSearch';
 import PointsPanel from './components/PointsPanel';
@@ -8,6 +9,7 @@ import RouteDetails from './components/RouteDetails';
 import RouteModeCards from './components/RouteModeCards';
 import { FILTERS } from './config/preferences';
 import { DEFAULT_ROUTE_MODE_ID } from './config/routeModes';
+import { BELFAST_DEMO_SOURCE, getDemoAccessibilityData, getRouteDemoNotes } from './data/belfastDemoSeed';
 import { fetchAccessibilityData } from './services/accessibilityData';
 import { buildRouteModes } from './services/routeModes';
 import { cacheKey, getCached, setCached } from './services/routeCache';
@@ -177,6 +179,9 @@ export default function App() {
       const rs = await fetchRoutes(startPoint, endPoint);
       if (reqId !== requestIdRef.current) return;
       setRoutes(rs);
+      const routeWarning = rs.some(route => route.source === BELFAST_DEMO_SOURCE)
+        ? 'Using a Belfast demo corridor because the live routing API did not return this route.'
+        : null;
       const bbox = combinedBbox(rs);
       let nextAcc = EMPTY_ACC_DATA;
       let nextWarning = null;
@@ -184,15 +189,18 @@ export default function App() {
         const data = await fetchAccessibilityData(bbox);
         if (reqId !== requestIdRef.current) return;
         nextAcc = data;
+        nextWarning = routeWarning;
       } catch (e) {
         if (reqId !== requestIdRef.current) return;
+        nextAcc = getDemoAccessibilityData(bbox);
         nextWarning = (
-          'Route shown without accessibility scoring because the OSM accessibility lookup is blocked or unreachable on this network. ' +
+          `${routeWarning ? `${routeWarning} ` : ''}` +
+          'Using Belfast demo corridor seed data because the OSM accessibility lookup is blocked or unreachable on this network. ' +
           e.message
         );
       }
       setAccData(nextAcc);
-      if (nextWarning) setWarning(nextWarning);
+      setWarning(nextWarning);
       setCached(key, { routes: rs, accData: nextAcc, warning: nextWarning });
     } catch (e) {
       if (reqId !== requestIdRef.current) return;
@@ -223,6 +231,7 @@ export default function App() {
   const chosen = selectedMode?.scoredRoute || null;
   const allBlocked = routeAnalyses.length > 0 && routeAnalyses.every(route => route.blocked);
   const featureStats = useMemo(() => getFeatureStats(chosen), [chosen]);
+  const localNotes = useMemo(() => getRouteDemoNotes(chosen), [chosen]);
 
   const hint = !start
     ? 'Click in Belfast to set your start point'
@@ -327,6 +336,7 @@ export default function App() {
 
         <RouteModeCards modes={routeModes} selectedModeId={selectedMode?.id || selectedModeId} onSelect={setSelectedModeId} />
         <RouteDetails chosen={chosen} selectedMode={selectedMode} featureStats={featureStats} filters={filters} />
+        <LocalContextPanel notes={localNotes} />
         <MapLegend />
 
         <p className="subtitle" style={{ fontSize: 11, marginTop: 18 }}>

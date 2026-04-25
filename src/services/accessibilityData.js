@@ -1,3 +1,4 @@
+import { mergeDemoAccessibilityData } from '../data/belfastDemoSeed';
 import { fetchJson, friendlyFetchError } from './http';
 
 const OVERPASS_TIMEOUT_MS = 30000;
@@ -87,5 +88,5 @@ export async function fetchAccessibilityData(bbox) {
       }
     }
   }
-  return { nodes, busyWays, forbiddenWays, source };
+  return mergeDemoAccessibilityData({ nodes, busyWays, forbiddenWays, source }, bbox);
 }

@@ -1,5 +1,9 @@
-import { offsetWaypoint } from '../utils/geo';
+import { BELFAST_DEMO_ROUTE_CORRIDORS, BELFAST_DEMO_SOURCE } from '../data/belfastDemoSeed';
+import { haversine, offsetWaypoint } from '../utils/geo';
 import { friendlyFetchError } from './http';
+
+const DEMO_CORRIDOR_MATCH_METERS = 180;
+const DEMO_WALKING_METERS_PER_SECOND = 1.25;
 
 async function fetchOsrm(coords) {
   const path = coords.map(c => `${c.lng},${c.lat}`).join(';');
@@ -45,6 +49,50 @@ function routeFingerprint(coords) {
   return parts.join('|');
 }
 
+function routeDistance(coords) {
+  let distance = 0;
+  for (let i = 0; i < coords.length - 1; i++) {
+    distance += haversine(coords[i], coords[i + 1]);
+  }
+  return distance;
+}
+
+function distanceToEndpoint(point, endpoint) {
+  return haversine([point.lat, point.lng], [endpoint.lat, endpoint.lng]);
+}
+
+function getDemoCorridorDirection(corridor, start, end) {
+  const [a, b] = corridor.endpoints;
+  const forward =
+    distanceToEndpoint(start, a) <= DEMO_CORRIDOR_MATCH_METERS &&
+    distanceToEndpoint(end, b) <= DEMO_CORRIDOR_MATCH_METERS;
+  if (forward) return 'forward';
+
+  const reverse =
+    distanceToEndpoint(start, b) <= DEMO_CORRIDOR_MATCH_METERS &&
+    distanceToEndpoint(end, a) <= DEMO_CORRIDOR_MATCH_METERS;
+  return reverse ? 'reverse' : null;
+}
+
+function getDemoRouteCandidates(start, end) {
+  const corridor = BELFAST_DEMO_ROUTE_CORRIDORS.find(c => getDemoCorridorDirection(c, start, end));
+  if (!corridor) return [];
+  const direction = getDemoCorridorDirection(corridor, start, end);
+
+  return corridor.candidates.map(candidate => {
+    const coords = direction === 'reverse' ? [...candidate.coords].reverse() : candidate.coords;
+    const distance = routeDistance(coords);
+    return {
+      coords,
+      distance,
+      duration: distance / DEMO_WALKING_METERS_PER_SECOND,
+      steps: [],
+      source: BELFAST_DEMO_SOURCE,
+      label: candidate.label
+    };
+  });
+}
+
 function pickPrimaryError(settled) {
   for (const s of settled) {
     if (s.status !== 'rejected') continue;
@@ -73,6 +121,9 @@ export async function fetchRoutes(start, end, { signal } = {}) {
 
   const ok = settled.filter(s => s.status === 'fulfilled').map(s => s.value);
   if (ok.length === 0) {
+    const demoRoutes = getDemoRouteCandidates(start, end);
+    if (demoRoutes.length > 0) return demoRoutes;
+
     const reason = pickPrimaryError(settled);
     throw new Error(reason ? `All routing attempts failed: ${reason}` : 'All routing attempts failed');
   }
