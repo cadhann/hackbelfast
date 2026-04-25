@@ -4,6 +4,7 @@ import { friendlyFetchError } from './http';
 
 const DEMO_CORRIDOR_MATCH_METERS = 180;
 const DEMO_WALKING_METERS_PER_SECOND = 1.25;
+const WALKING_METERS_PER_SECOND = 1.25;
 
 function osrmRouteToShape(r) {
   const steps = [];
@@ -21,8 +22,8 @@ function osrmRouteToShape(r) {
   return {
     coords: r.geometry.coordinates.map(([lon, lat]) => [lat, lon]),
     distance: r.distance,
-    duration: r.duration,
-    steps
+    duration: r.distance / WALKING_METERS_PER_SECOND,
+    steps: steps.map(s => ({ ...s, duration: s.distance / WALKING_METERS_PER_SECOND }))
   };
 }
 

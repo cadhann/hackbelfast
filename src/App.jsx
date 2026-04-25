@@ -238,7 +238,21 @@ export default function App() {
   const destinationResults = useMemo(() => searchDestinations(destinationQuery), [destinationQuery]);
 
   const selectedMode = useMemo(() => {
-    return routeModes.find(mode => mode.id === selectedModeId) || routeModes[0] || null;
+    const seen = new Set();
+    const visible = routeModes.filter(m => {
+      if (m.routeIndex < 0) return false;
+      if (seen.has(m.routeIndex)) return false;
+      seen.add(m.routeIndex);
+      return true;
+    });
+    const exact = visible.find(m => m.id === selectedModeId);
+    if (exact) return exact;
+    const requested = routeModes.find(m => m.id === selectedModeId);
+    if (requested) {
+      const sharing = visible.find(m => m.routeIndex === requested.routeIndex);
+      if (sharing) return sharing;
+    }
+    return visible[0] || routeModes[0] || null;
   }, [routeModes, selectedModeId]);
   const chosenIndex = selectedMode?.routeIndex ?? -1;
   const chosen = selectedMode?.scoredRoute || null;

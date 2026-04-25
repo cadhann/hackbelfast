@@ -8,11 +8,24 @@ function formatAccessibilityScore(score) {
 export default function RouteModeCards({ modes, selectedModeId, onSelect }) {
   if (modes.length === 0) return null;
 
+  const seen = new Set();
+  const visibleModes = modes.filter(mode => {
+    if (mode.routeIndex < 0) return false;
+    if (seen.has(mode.routeIndex)) return false;
+    seen.add(mode.routeIndex);
+    return true;
+  });
+
   return (
     <div className="mode-section">
-      <div className="section-title">Routes</div>
+      <div className="section-title">
+        Routes
+        {visibleModes.length < modes.length && (
+          <span className="section-title-note"> · {modes.length - visibleModes.length} mode(s) hidden — same path</span>
+        )}
+      </div>
       <div className="mode-row">
-        {modes.map(mode => {
+        {visibleModes.map(mode => {
           const s = mode.scoredRoute;
           const selected = mode.id === selectedModeId;
           return (
