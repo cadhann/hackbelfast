@@ -446,24 +446,46 @@ html, body, #root {
   margin: 24px 0 16px;
 }
 
-/* ===== Mode cards (horizontal chip row) ===== */
+/* ===== Walking-style chip row ===== */
 .mode-section { margin-top: 4px; }
-.mode-row {
+.style-row {
   display: flex;
-  gap: 10px;
-  overflow-x: auto;
-  scroll-snap-type: x mandatory;
-  padding-bottom: 6px;
-  margin: 0 -20px;
-  padding-left: 20px;
-  padding-right: 20px;
-  -webkit-overflow-scrolling: touch;
+  gap: 6px;
+  background: var(--gm-surface);
+  border-radius: 999px;
+  padding: 4px;
+  margin-bottom: 8px;
+  width: max-content;
+  max-width: 100%;
 }
-.mode-row::-webkit-scrollbar { height: 0; }
+.style-chip {
+  background: transparent;
+  border: 0;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--gm-text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.style-chip.active {
+  background: var(--gm-bg);
+  color: var(--gm-blue-dark);
+  font-weight: 500;
+  box-shadow: var(--gm-shadow-1);
+}
 
-.mode-card {
-  flex: 0 0 160px;
-  scroll-snap-align: start;
+/* ===== Route option cards (vertical stack) ===== */
+.route-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.route-option {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
   background: var(--gm-bg);
   border: 1px solid var(--gm-border);
   border-radius: var(--gm-radius);
@@ -471,69 +493,83 @@ html, body, #root {
   text-align: left;
   cursor: pointer;
   font-family: inherit;
-  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
 }
-.mode-card:hover { border-color: #b8bdc4; }
-.mode-card.selected {
+.route-option:hover { border-color: #b8bdc4; background: var(--gm-surface); }
+.route-option.selected {
   border-color: var(--gm-blue);
   background: #e8f0fe;
   box-shadow: 0 0 0 1px var(--gm-blue);
 }
-.mode-card-top {
+
+.route-option-main {
+  flex: 1;
+  min-width: 0;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  gap: 2px;
 }
-.mode-card-title {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--gm-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-.mode-chosen-pill {
-  font-size: 10px;
-  font-weight: 600;
-  background: var(--gm-blue);
-  color: white;
-  padding: 2px 8px;
-  border-radius: 999px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.mode-card-time {
-  font-size: 22px;
+.route-option-time {
+  font-size: 20px;
   font-weight: 500;
   color: var(--gm-text);
-  margin-top: 6px;
   letter-spacing: -0.01em;
 }
-.mode-card.selected .mode-card-time { color: var(--gm-blue); }
-.mode-card-meta {
-  font-size: 12px;
+.route-option.selected .route-option-time { color: var(--gm-blue); }
+
+.route-option-meta {
+  font-size: 13px;
   color: var(--gm-text-muted);
-  margin-top: 2px;
   display: flex;
-  gap: 4px;
+  gap: 6px;
   align-items: center;
 }
 .mode-dot { color: var(--gm-border); }
-.mode-card-sub {
-  font-size: 11px;
-  color: var(--gm-text-muted);
+
+.route-option-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
   margin-top: 6px;
-  font-style: italic;
 }
-.mode-card-flag {
-  margin-top: 8px;
-  font-size: 11px;
+.route-option-tag {
+  font-size: 10px;
   font-weight: 500;
-  color: #7a5d00;
-  background: #fef7e0;
-  border-radius: 6px;
-  padding: 4px 8px;
-  display: inline-block;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--gm-text-muted);
+  background: var(--gm-surface);
+  border-radius: 999px;
+  padding: 2px 8px;
+  border: 1px solid var(--gm-border);
+}
+
+.route-option-side {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+.route-pill {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.route-pill.recommended { background: #e6f4ea; color: var(--gm-green); }
+.route-pill.selected { background: var(--gm-blue); color: white; }
+.route-pill.warn { background: #fef7e0; color: #7a5d00; }
+
+.section-title-note {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--gm-text-muted);
+  font-size: 11px;
 }
 
 /* ===== Pref chips ===== */

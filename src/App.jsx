@@ -15,7 +15,7 @@ import { fetchAccessibilityData } from './services/accessibilityData';
 import { buildRouteModes } from './services/routeModes';
 import { cacheKey, getCached, setCached } from './services/routeCache';
 import { fetchRoutes } from './services/routing';
-import { analyzeRoute, getFeatureStats } from './services/routeScoring';
+import { analyzeRoute, getFeatureStats, scoreRouteAnalysis } from './services/routeScoring';
 import { combinedBbox, samePoint } from './utils/geo';
 import { searchDestinations } from './utils/search';
 import './App.css';
@@ -52,6 +52,7 @@ export default function App() {
   const [error, setError] = useState(null);
   const [warning, setWarning] = useState(null);
   const [selectedModeId, setSelectedModeId] = useState(DEFAULT_ROUTE_MODE_ID);
+  const [selectedRouteIndex, setSelectedRouteIndex] = useState(null);
   const [filters, setFilters] = useState({
     tactile: false,
     audio: false,
@@ -237,25 +238,34 @@ export default function App() {
   const startResults = useMemo(() => searchDestinations(startQuery), [startQuery]);
   const destinationResults = useMemo(() => searchDestinations(destinationQuery), [destinationQuery]);
 
-  const selectedMode = useMemo(() => {
-    const seen = new Set();
-    const visible = routeModes.filter(m => {
-      if (m.routeIndex < 0) return false;
-      if (seen.has(m.routeIndex)) return false;
-      seen.add(m.routeIndex);
-      return true;
-    });
-    const exact = visible.find(m => m.id === selectedModeId);
-    if (exact) return exact;
-    const requested = routeModes.find(m => m.id === selectedModeId);
-    if (requested) {
-      const sharing = visible.find(m => m.routeIndex === requested.routeIndex);
-      if (sharing) return sharing;
-    }
-    return visible[0] || routeModes[0] || null;
+  const recommendedMode = useMemo(() => {
+    return routeModes.find(m => m.id === selectedModeId)
+      || routeModes.find(m => m.id === DEFAULT_ROUTE_MODE_ID)
+      || routeModes[0]
+      || null;
   }, [routeModes, selectedModeId]);
-  const chosenIndex = selectedMode?.routeIndex ?? -1;
-  const chosen = selectedMode?.scoredRoute || null;
+
+  const candidates = useMemo(() => {
+    if (!recommendedMode || routeAnalyses.length === 0) return [];
+    return routeAnalyses.map(a => scoreRouteAnalysis(a, recommendedMode.weights));
+  }, [routeAnalyses, recommendedMode]);
+
+  const recommendedIndex = recommendedMode?.routeIndex ?? -1;
+
+  const chosenIndex = useMemo(() => {
+    if (candidates.length === 0) return -1;
+    if (selectedRouteIndex !== null && selectedRouteIndex >= 0 && selectedRouteIndex < candidates.length) {
+      return selectedRouteIndex;
+    }
+    return recommendedIndex >= 0 ? recommendedIndex : 0;
+  }, [candidates, selectedRouteIndex, recommendedIndex]);
+
+  const chosen = chosenIndex >= 0 ? candidates[chosenIndex] : null;
+  const selectedMode = recommendedMode;
+
+  useEffect(() => {
+    setSelectedRouteIndex(null);
+  }, [routes]);
   const allBlocked = routeAnalyses.length > 0 && routeAnalyses.every(route => route.blocked);
   const featureStats = useMemo(() => getFeatureStats(chosen), [chosen]);
   const localNotes = useMemo(() => getRouteDemoNotes(chosen), [chosen]);
@@ -406,7 +416,15 @@ export default function App() {
         onToggle={() => setSidebarOpen(o => !o)}
         peek={peekContent}
       >
-        <RouteModeCards modes={routeModes} selectedModeId={selectedMode?.id || selectedModeId} onSelect={setSelectedModeId} />
+        <RouteModeCards
+          candidates={candidates}
+          modes={routeModes}
+          recommendedIndex={recommendedIndex}
+          selectedIndex={chosenIndex}
+          activeModeId={selectedMode?.id || selectedModeId}
+          onSelectRoute={setSelectedRouteIndex}
+          onSelectMode={(id) => { setSelectedModeId(id); setSelectedRouteIndex(null); }}
+        />
         <PreferenceList
           filters={filters}
           filterOptions={FILTERS}
