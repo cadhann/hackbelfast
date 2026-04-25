@@ -1,5 +1,7 @@
 import {
   BELFAST_COMMUNITY_REPORTS,
+  BELFAST_CRASH_RISK_NODES,
+  BELFAST_CRASH_RISK_WAYS,
   BELFAST_ROUGH_WAYS,
   BELFAST_SEATING,
   BELFAST_STATIONS,
@@ -377,6 +379,8 @@ const ACCESSIBILITY_ARRAY_FIELDS = [
   'nodes',
   'busyWays',
   'forbiddenWays',
+  'crashRiskNodes',
+  'crashRiskWays',
   'stepsWays',
   'narrowWays',
   'litWays',
@@ -390,6 +394,17 @@ const ACCESSIBILITY_ARRAY_FIELDS = [
   'steepWays'
 ];
 
+function buildCrashRiskAliases(crashRiskNodes, crashRiskWays) {
+  return {
+    collisionRiskNodes: crashRiskNodes,
+    collisionRiskWays: crashRiskWays,
+    crashHotspots: crashRiskNodes,
+    collisionHotspots: crashRiskNodes,
+    crashRiskSegments: crashRiskWays,
+    collisionRiskSegments: crashRiskWays
+  };
+}
+
 function mergeSource(source) {
   if (!source || source === BELFAST_DEMO_SOURCE) return BELFAST_DEMO_SOURCE;
   if (source.includes(BELFAST_DEMO_SOURCE)) return source;
@@ -397,10 +412,14 @@ function mergeSource(source) {
 }
 
 export function getDemoAccessibilityData(bbox) {
+  const crashRiskNodes = BELFAST_CRASH_RISK_NODES.filter(node => pointInsideBbox(node.lat, node.lon, bbox));
+  const crashRiskWays = BELFAST_CRASH_RISK_WAYS.filter(way => wayInsideBbox(way, bbox));
   return {
     nodes: BELFAST_DEMO_ACCESSIBILITY_NODES.filter(node => pointInsideBbox(node.lat, node.lon, bbox)),
     busyWays: BELFAST_DEMO_BUSY_WAYS.filter(way => wayInsideBbox(way, bbox)),
     forbiddenWays: [],
+    crashRiskNodes,
+    crashRiskWays,
     stepsWays: [],
     narrowWays: [],
     litWays: [],
@@ -412,6 +431,7 @@ export function getDemoAccessibilityData(bbox) {
     communityReports: BELFAST_COMMUNITY_REPORTS.filter(node => pointInsideBbox(node.lat, node.lon, bbox)),
     roughWays: BELFAST_ROUGH_WAYS.filter(way => wayInsideBbox(way, bbox)),
     steepWays: BELFAST_STEEP_WAYS.filter(way => wayInsideBbox(way, bbox)),
+    ...buildCrashRiskAliases(crashRiskNodes, crashRiskWays),
     source: BELFAST_DEMO_SOURCE,
     seedOnly: true
   };
@@ -427,6 +447,7 @@ export function mergeDemoAccessibilityData(data, bbox) {
 
   return {
     ...merged,
+    ...buildCrashRiskAliases(merged.crashRiskNodes || [], merged.crashRiskWays || []),
     source: mergeSource(data.source),
     seedOnly: false
   };

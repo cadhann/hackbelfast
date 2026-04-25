@@ -17,6 +17,7 @@ export const PENALTIES = {
   seating_bonus: 75,
   accessible_station_bonus: 220,
   inaccessible_station_penalty: 220,
+  crash_risk_unit: 220,
   rough_surface_per_meter: 6,
   smooth_surface_per_meter_bonus: 1.5,
   steep_per_meter: 10,
@@ -96,7 +97,6 @@ export const FILTERS = [
   {
     id: 'avoid_crash',
     title: 'Avoid collision-prone areas',
-    desc: 'Coming soon — NI vehicle crash dataset not yet ingested.',
-    disabled: true
+    desc: 'Penalise known crash-risk hotspots and difficult junctions where collisions are more common.'
   }
 ];

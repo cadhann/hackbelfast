@@ -1,5 +1,6 @@
 export const BELFAST_CIVIC_FIXTURE_SOURCE = 'belfast_civic_seed';
 export const BELFAST_COMMUNITY_REPORT_SOURCE = 'belfast_community_seed';
+export const BELFAST_CRASH_FIXTURE_SOURCE = 'belfast_crash_seed';
 
 export const BELFAST_TOILETS = [
   {
@@ -371,6 +372,221 @@ export const BELFAST_STEEP_WAYS = [
       { lat: 54.60234, lon: -5.92958 },
       { lat: 54.60274, lon: -5.92902 },
       { lat: 54.60306, lon: -5.92846 }
+    ]
+  }
+];
+
+export const BELFAST_CRASH_RISK_NODES = [
+  {
+    id: 'seed-crash-grand-central-howard',
+    lat: 54.59482,
+    lon: -5.93478,
+    riskLevel: 'high',
+    crashCount: 8,
+    period: '2019-2024 seed',
+    summary: 'Grand Central and Howard Street is a wide, multi-arm junction with heavy turning movements and long pedestrian exposure.',
+    tags: {
+      name: 'Grand Central / Howard Street hotspot',
+      area: 'Weavers Cross',
+      risk_level: 'high',
+      risk_kind: 'junction',
+      risk_score: '8',
+      crash_count: '8',
+      crash_period: '2019-2024 seed',
+      movement_profile: 'bus_turns, taxi_rank, multi_lane',
+      crash_note: 'Seed crash hotspot: complex bus-station approaches, long crossings, and frequent turning movements concentrate risk here.',
+      source: BELFAST_CRASH_FIXTURE_SOURCE
+    }
+  },
+  {
+    id: 'seed-crash-shaftesbury-square',
+    lat: 54.58858,
+    lon: -5.93216,
+    riskLevel: 'high',
+    crashCount: 7,
+    period: '2019-2024 seed',
+    summary: 'Shaftesbury Square combines multiple junction arms, turning traffic, and staggered crossings.',
+    tags: {
+      name: 'Shaftesbury Square hotspot',
+      area: 'Dublin Road',
+      risk_level: 'high',
+      risk_kind: 'junction',
+      risk_score: '7',
+      crash_count: '7',
+      crash_period: '2019-2024 seed',
+      movement_profile: 'multi_arm, staggered_crossings, turning_traffic',
+      crash_note: 'Seed crash hotspot: multiple arms and turning flows make the square harder to cross cleanly.',
+      source: BELFAST_CRASH_FIXTURE_SOURCE
+    }
+  },
+  {
+    id: 'seed-crash-lanyon-east-bridge',
+    lat: 54.59510,
+    lon: -5.91808,
+    riskLevel: 'high',
+    crashCount: 6,
+    period: '2019-2024 seed',
+    summary: 'The Lanyon Place and East Bridge Street approach has a fast bridge descent and exposed crossing geometry.',
+    tags: {
+      name: 'Lanyon Place / East Bridge Street hotspot',
+      area: 'Lanyon Place',
+      risk_level: 'high',
+      risk_kind: 'bridge_approach',
+      risk_score: '6',
+      crash_count: '6',
+      crash_period: '2019-2024 seed',
+      movement_profile: 'bridge_approach, multi_lane, peak_flows',
+      crash_note: 'Seed crash hotspot: bridge-side approach with higher approach speeds and wide pedestrian exposure.',
+      source: BELFAST_CRASH_FIXTURE_SOURCE
+    }
+  },
+  {
+    id: 'seed-crash-queens-bridge',
+    lat: 54.59823,
+    lon: -5.91716,
+    riskLevel: 'medium',
+    crashCount: 5,
+    period: '2019-2024 seed',
+    summary: 'Queen\'s Bridge has wide carriageway approaches and long signalized crossings near Bridge End.',
+    tags: {
+      name: 'Queen\'s Bridge approach hotspot',
+      area: 'Bridge End',
+      risk_level: 'medium',
+      risk_kind: 'bridge_approach',
+      risk_score: '5',
+      crash_count: '5',
+      crash_period: '2019-2024 seed',
+      movement_profile: 'bridge_approach, long_crossing, turning_traffic',
+      crash_note: 'Seed crash hotspot: long crossing lengths and turning traffic raise exposure at the bridge approach.',
+      source: BELFAST_CRASH_FIXTURE_SOURCE
+    }
+  },
+  {
+    id: 'seed-crash-york-street',
+    lat: 54.60318,
+    lon: -5.92992,
+    riskLevel: 'medium',
+    crashCount: 4,
+    period: '2019-2024 seed',
+    summary: 'York Street near the university edge mixes city-centre footfall with complex lane changes and bus movements.',
+    tags: {
+      name: 'York Street hotspot',
+      area: 'York Street',
+      risk_level: 'medium',
+      risk_kind: 'junction',
+      risk_score: '4',
+      crash_count: '4',
+      crash_period: '2019-2024 seed',
+      movement_profile: 'bus_turns, lane_changes, city_centre_footfall',
+      crash_note: 'Seed crash hotspot: lane changes and bus turns around the York Street edge create extra conflict points.',
+      source: BELFAST_CRASH_FIXTURE_SOURCE
+    }
+  }
+];
+
+export const BELFAST_CRASH_RISK_WAYS = [
+  {
+    id: 'seed-crash-way-great-victoria-corridor',
+    riskLevel: 'high',
+    crashCount: 9,
+    period: '2019-2024 seed',
+    summary: 'Great Victoria Street approaches around Grand Central carry heavy turning movements and repeated crossing exposure.',
+    tags: {
+      highway: 'primary',
+      name: 'Great Victoria Street crash-risk corridor',
+      area: 'Weavers Cross',
+      risk_level: 'high',
+      risk_kind: 'corridor',
+      risk_score: '9',
+      crash_count: '9',
+      crash_period: '2019-2024 seed',
+      movement_profile: 'multi_lane, bus_corridor, frequent_turns',
+      crash_note: 'Seed crash corridor: heavy public-transport and general-traffic movements make this a higher-conflict walking edge.',
+      source: BELFAST_CRASH_FIXTURE_SOURCE
+    },
+    geometry: [
+      { lat: 54.59276, lon: -5.93718 },
+      { lat: 54.59386, lon: -5.93598 },
+      { lat: 54.59516, lon: -5.93448 },
+      { lat: 54.59608, lon: -5.93336 }
+    ]
+  },
+  {
+    id: 'seed-crash-way-east-bridge',
+    riskLevel: 'high',
+    crashCount: 7,
+    period: '2019-2024 seed',
+    summary: 'East Bridge Street is a fast bridge approach with long crossings and narrow refuge opportunities.',
+    tags: {
+      highway: 'primary',
+      name: 'East Bridge Street crash-risk corridor',
+      area: 'Lanyon Place',
+      risk_level: 'high',
+      risk_kind: 'corridor',
+      risk_score: '7',
+      crash_count: '7',
+      crash_period: '2019-2024 seed',
+      movement_profile: 'bridge_approach, multi_lane, exposed_crossings',
+      crash_note: 'Seed crash corridor: bridge descent and wide carriageway geometry create extra exposure on this edge.',
+      source: BELFAST_CRASH_FIXTURE_SOURCE
+    },
+    geometry: [
+      { lat: 54.59454, lon: -5.91956 },
+      { lat: 54.59498, lon: -5.91852 },
+      { lat: 54.59544, lon: -5.91740 },
+      { lat: 54.59606, lon: -5.91614 }
+    ]
+  },
+  {
+    id: 'seed-crash-way-dublin-road',
+    riskLevel: 'high',
+    crashCount: 6,
+    period: '2019-2024 seed',
+    summary: 'The Dublin Road and Shaftesbury Square corridor has layered turns and frequent side-road conflicts.',
+    tags: {
+      highway: 'primary',
+      name: 'Dublin Road crash-risk corridor',
+      area: 'Shaftesbury Square',
+      risk_level: 'high',
+      risk_kind: 'corridor',
+      risk_score: '6',
+      crash_count: '6',
+      crash_period: '2019-2024 seed',
+      movement_profile: 'multi_arm, bus_corridor, side_road_turns',
+      crash_note: 'Seed crash corridor: several turning pockets and side-road entries make the walking line less predictable.',
+      source: BELFAST_CRASH_FIXTURE_SOURCE
+    },
+    geometry: [
+      { lat: 54.58694, lon: -5.93176 },
+      { lat: 54.58782, lon: -5.93198 },
+      { lat: 54.58864, lon: -5.93218 },
+      { lat: 54.59002, lon: -5.93244 }
+    ]
+  },
+  {
+    id: 'seed-crash-way-queens-bridge',
+    riskLevel: 'medium',
+    crashCount: 5,
+    period: '2019-2024 seed',
+    summary: 'The Queen\'s Bridge edge has long crossings with higher-speed approach lanes toward Bridge End.',
+    tags: {
+      highway: 'secondary',
+      name: 'Queen\'s Bridge crash-risk corridor',
+      area: 'Bridge End',
+      risk_level: 'medium',
+      risk_kind: 'corridor',
+      risk_score: '5',
+      crash_count: '5',
+      crash_period: '2019-2024 seed',
+      movement_profile: 'bridge_approach, long_crossing, lane_changes',
+      crash_note: 'Seed crash corridor: long approaches and lane changes keep this bridge edge exposed.',
+      source: BELFAST_CRASH_FIXTURE_SOURCE
+    },
+    geometry: [
+      { lat: 54.59754, lon: -5.91802 },
+      { lat: 54.59808, lon: -5.91754 },
+      { lat: 54.59858, lon: -5.91686 },
+      { lat: 54.59912, lon: -5.91594 }
     ]
   }
 ];

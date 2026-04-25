@@ -15,7 +15,8 @@ const WEIGHT_KEYS = [
   'simple_navigation',
   'rest_points',
   'station_access',
-  'verified_reports'
+  'verified_reports',
+  'avoid_crash'
 ];
 
 function buildModeWeights(mode, preferences) {
@@ -57,7 +58,8 @@ function chooseRouteIndex(scoredCandidates) {
       }
       if (
         Math.abs((candidate.decisionWeight || 0) - (currentBest.decisionWeight || 0)) <= 0.1 &&
-        (candidate.reportIssueUnits || 0) < (currentBest.reportIssueUnits || 0) - 0.1
+        ((candidate.reportIssueUnits || 0) + (candidate.crashRiskUnits || 0)) <
+          (((currentBest.reportIssueUnits || 0) + (currentBest.crashRiskUnits || 0)) - 0.1)
       ) {
         best = i;
       }
@@ -86,6 +88,8 @@ function hasAccessibilityEvidence(routeAnalyses) {
       analysis.seatingCount > 0 ||
       analysis.stationCount > 0 ||
       analysis.reportCount > 0 ||
+      analysis.crashHotspotCount > 0 ||
+      analysis.crashRiskMeters > 0 ||
       (analysis.decisionPoints || 0) > 0 ||
       Object.values(analysis.signals).some(Boolean) ||
       (evidence.known || 0) > 0 ||
@@ -115,7 +119,7 @@ function buildSelectionReason(mode, context) {
     return 'Same path as Fastest because no alternative scores better overall on the available accessibility signals.';
   }
   if (mode.id === 'fastest') {
-    return 'Chooses the shortest walking route before applying accessibility preferences.';
+    return 'Keeps the route as short as possible while applying a light version of the active accessibility preferences.';
   }
   if (mode.id === 'balanced') {
     return 'Balances distance with route conditions, support places, and the selected accessibility preferences.';
@@ -185,6 +189,13 @@ function buildExposureReason(scoredRoute) {
   if (scoredRoute.reportCount > 0) {
     const verified = scoredRoute.verifiedReportCount || 0;
     return `${pluralize(scoredRoute.reportCount, 'community report')} are near this route${verified > 0 ? `, including ${verified} verified` : ''}.`;
+  }
+  if (scoredRoute.crashHotspotCount > 0) {
+    const severe = scoredRoute.severeCrashHotspotCount || 0;
+    return `${pluralize(scoredRoute.crashHotspotCount, 'crash-risk hotspot')} are near this route${severe > 0 ? `, including ${severe} higher-risk junction${severe === 1 ? '' : 's'}` : ''}.`;
+  }
+  if (scoredRoute.crashRiskMeters > 0) {
+    return `${formatDistance(scoredRoute.crashRiskMeters)} follows higher-risk road approaches or junction corridors.`;
   }
   if (scoredRoute.forbiddenMeters > 0 && scoredRoute.busyMeters > 0) {
     return `${formatDistance(scoredRoute.forbiddenMeters)} near restricted ways and ${formatDistance(scoredRoute.busyMeters)} near busy roads add risk.`;

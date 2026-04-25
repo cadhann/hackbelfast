@@ -835,7 +835,7 @@ export default function App() {
         <RouteDetails chosen={chosen} selectedMode={selectedMode} featureStats={featureStats} filters={filters} />
         <MapLegend />
         <p className="footnote">
-          Fastest = shortest walk. Balanced applies lighter accessibility weighting. Beacon Accessible uses the full preference set. Crossing data comes from OSM tags within 30 m of the route. The wider score model can also use nearby steps, pavement width, lighting, surface, gradient, support places, station access, and seeded community reports where known. Unknown data stays unknown rather than being treated as missing.
+          Fastest = shortest walk with light preference nudges. Balanced applies lighter accessibility weighting. Beacon Accessible uses the full preference set. Crossing data comes from OSM tags within 30 m of the route. The wider score model can also use nearby steps, pavement width, lighting, surface, gradient, support places, station access, crash hotspots, and seeded community reports where known. Unknown data stays unknown rather than being treated as missing.
         </p>
       </BottomSheet>
     </div>

@@ -1,5 +1,6 @@
 import { mergeDemoAccessibilityData } from '../data/belfastDemoSeed';
 import { fetchJson, friendlyFetchError } from './http';
+import { minDistanceToWayMeters } from '../utils/geo';
 
 const OVERPASS_TIMEOUT_MS = 30000;
 const OVERPASS_ENDPOINTS = [
@@ -38,12 +39,208 @@ function isSteepWay(tags) {
   return Number.isFinite(numeric) && Math.abs(numeric) >= 4;
 }
 
+function parseFirstNumeric(value) {
+  if (typeof value !== 'string' && typeof value !== 'number') return null;
+  const text = String(value);
+  const matches = text.match(/-?\d+(\.\d+)?/g);
+  if (!matches?.length) return null;
+  const numbers = matches.map(entry => Number.parseFloat(entry)).filter(Number.isFinite);
+  if (!numbers.length) return null;
+  return Math.max(...numbers);
+}
+
+function crashRiskLevel(score) {
+  if (score >= 6) return 'high';
+  if (score >= 4) return 'medium';
+  return 'low';
+}
+
+function crashRiskWeight(level) {
+  if (level === 'high') return 3;
+  if (level === 'medium') return 2;
+  return 1;
+}
+
+function compactFactors(factors) {
+  return [...new Set(factors.filter(Boolean))];
+}
+
+function isSignalizedCrossing(tags) {
+  if (!tags) return false;
+  return tags.crossing === 'traffic_signals' || tags.crossing_ref === 'traffic_signals';
+}
+
+function hasCrossingRefuge(tags) {
+  if (!tags) return false;
+  return tags['crossing:island'] === 'yes' || tags.crossing_island === 'yes' || tags.refuge === 'yes';
+}
+
+function buildCrashRiskWay(way, score, factors, source) {
+  const riskLevel = crashRiskLevel(score);
+  const riskFactors = compactFactors(factors);
+  return {
+    ...way,
+    riskLevel,
+    riskScore: score,
+    riskBasis: 'derived_osm',
+    summary: `${way.tags?.name || 'Busy road corridor'} has ${riskLevel} collision risk from ${riskFactors.join(', ')}.`,
+    tags: {
+      ...(way.tags || {}),
+      risk_level: riskLevel,
+      risk_score: String(score),
+      risk_kind: 'corridor',
+      risk_basis: 'derived_osm',
+      risk_factors: riskFactors.join(', '),
+      crash_risk: riskLevel,
+      collision_risk: riskLevel,
+      crash_note: `${way.tags?.name || 'Corridor'} is derived as a higher-conflict walking edge because of ${riskFactors.join(', ')}.`,
+      source: source ? `${source} + derived_crash_risk` : 'derived_crash_risk'
+    }
+  };
+}
+
+function buildCrashRiskNode(node, score, factors, source, relatedWays) {
+  const riskLevel = crashRiskLevel(score);
+  const riskFactors = compactFactors(factors);
+  return {
+    ...node,
+    riskLevel,
+    riskScore: score,
+    riskBasis: 'derived_osm',
+    relatedWayIds: relatedWays.map(way => way.id),
+    summary: `${node.tags?.name || 'Crossing hotspot'} has ${riskLevel} collision risk from ${riskFactors.join(', ')}.`,
+    tags: {
+      ...(node.tags || {}),
+      risk_level: riskLevel,
+      risk_score: String(score),
+      risk_kind: node.tags?.highway === 'crossing' ? 'crossing_hotspot' : 'junction_hotspot',
+      risk_basis: 'derived_osm',
+      risk_factors: riskFactors.join(', '),
+      crash_risk: riskLevel,
+      collision_risk: riskLevel,
+      related_way_ids: relatedWays.map(way => way.id).join(','),
+      crash_note: `${node.tags?.name || 'Hotspot'} is derived as a higher-conflict point because of ${riskFactors.join(', ')}.`,
+      source: source ? `${source} + derived_crash_risk` : 'derived_crash_risk'
+    }
+  };
+}
+
+function deriveCrashRiskWays(busyWays, source) {
+  return busyWays.flatMap(way => {
+    const tags = way.tags || {};
+    const highway = (tags.highway || '').toLowerCase();
+    const factors = [];
+    let score = 0;
+
+    if (highway === 'trunk' || highway === 'trunk_link') {
+      score += 4;
+      factors.push('trunk-class traffic');
+    } else if (highway === 'primary' || highway === 'primary_link') {
+      score += 3;
+      factors.push('primary road traffic');
+    } else if (highway === 'secondary' || highway === 'secondary_link') {
+      score += 2;
+      factors.push('secondary road traffic');
+    }
+
+    const lanes = parseFirstNumeric(tags.lanes) ?? parseFirstNumeric(tags['lanes:forward']);
+    if (lanes >= 4) {
+      score += 2;
+      factors.push('4+ lanes');
+    } else if (lanes >= 3) {
+      score += 1;
+      factors.push('3 lanes');
+    }
+
+    const maxspeed = parseFirstNumeric(tags.maxspeed);
+    if (maxspeed >= 40) {
+      score += 2;
+      factors.push('40+ speed limit');
+    } else if (maxspeed >= 30) {
+      score += 1;
+      factors.push('30+ speed limit');
+    }
+
+    if (tags.junction === 'roundabout') {
+      score += 2;
+      factors.push('roundabout geometry');
+    }
+
+    if (tags['turn:lanes'] || tags.turn_lanes) {
+      score += 1;
+      factors.push('turn lanes');
+    }
+
+    if (tags.busway === 'lane' || tags.psv === 'yes' || tags['bus:lanes']) {
+      score += 1;
+      factors.push('bus-heavy movements');
+    }
+
+    if (score < 3) return [];
+    return [buildCrashRiskWay(way, score, factors, source)];
+  });
+}
+
+function deriveCrashRiskNodes(nodes, crashRiskWays, busyWays, source) {
+  return nodes.flatMap(node => {
+    const tags = node.tags || {};
+    const highway = tags.highway;
+    if (!['crossing', 'traffic_signals', 'mini_roundabout'].includes(highway)) return [];
+
+    const point = [node.lat, node.lon];
+    const nearbyRiskWays = crashRiskWays.filter(way => minDistanceToWayMeters(point, way.geometry) <= 18);
+    const nearbyBusyWays = busyWays.filter(way => minDistanceToWayMeters(point, way.geometry) <= 14);
+    const factors = [];
+    let score = 0;
+
+    if (nearbyRiskWays.length) {
+      const highestRisk = Math.max(...nearbyRiskWays.map(way => crashRiskWeight(way.riskLevel)));
+      score += highestRisk + Math.max(0, nearbyRiskWays.length - 1);
+      factors.push(`${nearbyRiskWays.length} nearby crash-risk corridor${nearbyRiskWays.length > 1 ? 's' : ''}`);
+    }
+
+    if (nearbyBusyWays.length > nearbyRiskWays.length) {
+      score += 1;
+      factors.push('multiple busy carriageways');
+    }
+
+    if (highway === 'crossing') {
+      if (!isSignalizedCrossing(tags)) {
+        score += 2;
+        factors.push('unsignalized crossing control');
+      } else {
+        factors.push('signalized crossing on busy road');
+      }
+
+      if (!hasCrossingRefuge(tags)) {
+        score += 1;
+        factors.push('no refuge island');
+      }
+    }
+
+    if (highway === 'mini_roundabout') {
+      score += 2;
+      factors.push('mini-roundabout junction');
+    }
+
+    if (highway === 'traffic_signals' && nearbyRiskWays.length >= 2) {
+      score += 2;
+      factors.push('signalized multi-arm junction');
+    }
+
+    if (score < 3) return [];
+    return [buildCrashRiskNode(node, score, factors, source, nearbyRiskWays)];
+  });
+}
+
 export async function fetchAccessibilityData(bbox) {
   const [s, w, n, e] = bbox;
   const query = `
     [out:json][timeout:25];
     (
       node["highway"="crossing"](${s},${w},${n},${e});
+      node["highway"="traffic_signals"](${s},${w},${n},${e});
+      node["highway"="mini_roundabout"](${s},${w},${n},${e});
       node["kerb"](${s},${w},${n},${e});
       node["highway"="street_lamp"](${s},${w},${n},${e});
       node["amenity"="toilets"](${s},${w},${n},${e});
@@ -107,6 +304,8 @@ export async function fetchAccessibilityData(bbox) {
   const busyWays = [];
   const forbiddenWays = [];
   const stepsWays = [];
+  const crashRiskNodes = [];
+  const crashRiskWays = [];
   const litWays = [];
   const unlitWays = [];
   const narrowWays = [];
@@ -148,11 +347,15 @@ export async function fetchAccessibilityData(bbox) {
       if (isSteepWay(t)) steepWays.push(el);
     }
   }
+  crashRiskWays.push(...deriveCrashRiskWays(busyWays, source));
+  crashRiskNodes.push(...deriveCrashRiskNodes(nodes, crashRiskWays, busyWays, source));
   return mergeDemoAccessibilityData(
     {
       nodes,
       busyWays,
       forbiddenWays,
+      crashRiskNodes,
+      crashRiskWays,
       stepsWays,
       narrowWays,
       litWays,
