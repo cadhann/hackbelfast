@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import JourneyMap from './components/JourneyMap';
 import MapLegend from './components/MapLegend';
 import PlaceSearch from './components/PlaceSearch';
@@ -10,6 +10,7 @@ import { FILTERS } from './config/preferences';
 import { DEFAULT_ROUTE_MODE_ID } from './config/routeModes';
 import { fetchAccessibilityData } from './services/accessibilityData';
 import { buildRouteModes } from './services/routeModes';
+import { cacheKey, getCached, setCached } from './services/routeCache';
 import { fetchRoutes } from './services/routing';
 import { analyzeRoute, getFeatureStats } from './services/routeScoring';
 import { combinedBbox, samePoint } from './utils/geo';
@@ -17,6 +18,12 @@ import { searchDestinations } from './utils/search';
 import './App.css';
 
 const EMPTY_ACC_DATA = { nodes: [], busyWays: [], forbiddenWays: [] };
+const MOBILE_BREAKPOINT = 720;
+
+function isMobileViewport() {
+  if (typeof window === 'undefined') return false;
+  return window.innerWidth <= MOBILE_BREAKPOINT;
+}
 
 export default function App() {
   const [start, setStart] = useState(null);
@@ -40,6 +47,17 @@ export default function App() {
     avoid_busy: false,
     avoid_crash: false
   });
+  const [sidebarOpen, setSidebarOpen] = useState(!isMobileViewport());
+
+  const requestIdRef = useRef(0);
+
+  useEffect(() => {
+    const onResize = () => {
+      if (window.innerWidth > MOBILE_BREAKPOINT) setSidebarOpen(true);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const clearRouteData = () => {
     setRoutes([]);
@@ -58,6 +76,7 @@ export default function App() {
   const handleMapClick = (latlng) => {
     setError(null); setWarning(null);
     closeSearches();
+    if (isMobileViewport()) setSidebarOpen(false);
     if (!start) {
       setStart(latlng);
       setSelectedStart(null);
@@ -131,38 +150,61 @@ export default function App() {
     setError(null); setWarning(null);
   };
 
-  const computeRoute = async () => {
-    if (!start || !end) return;
-    if (samePoint(start, end)) {
+  const computeRoute = async (startPoint, endPoint, { force = false } = {}) => {
+    if (!startPoint || !endPoint) return;
+    if (samePoint(startPoint, endPoint)) {
       rejectSamePoint();
       clearRouteData();
       return;
     }
+
+    const reqId = ++requestIdRef.current;
+    const key = cacheKey(startPoint, endPoint);
+
+    if (!force) {
+      const cached = getCached(key);
+      if (cached) {
+        setRoutes(cached.routes);
+        setAccData(cached.accData);
+        setError(null);
+        setWarning(cached.warning || null);
+        return;
+      }
+    }
+
     setLoading(true); setError(null); setWarning(null);
     try {
-      const rs = await fetchRoutes(start, end);
+      const rs = await fetchRoutes(startPoint, endPoint);
+      if (reqId !== requestIdRef.current) return;
       setRoutes(rs);
       const bbox = combinedBbox(rs);
+      let nextAcc = EMPTY_ACC_DATA;
+      let nextWarning = null;
       try {
         const data = await fetchAccessibilityData(bbox);
-        setAccData(data);
+        if (reqId !== requestIdRef.current) return;
+        nextAcc = data;
       } catch (e) {
-        setAccData(EMPTY_ACC_DATA);
-        setWarning(
+        if (reqId !== requestIdRef.current) return;
+        nextWarning = (
           'Route shown without accessibility scoring because the OSM accessibility lookup is blocked or unreachable on this network. ' +
           e.message
         );
       }
+      setAccData(nextAcc);
+      if (nextWarning) setWarning(nextWarning);
+      setCached(key, { routes: rs, accData: nextAcc, warning: nextWarning });
     } catch (e) {
+      if (reqId !== requestIdRef.current) return;
       setError(e.message);
       clearRouteData();
     } finally {
-      setLoading(false);
+      if (reqId === requestIdRef.current) setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (start && end) computeRoute();
+    if (start && end) computeRoute(start, end);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [start, end]);
 
@@ -189,8 +231,21 @@ export default function App() {
     : null;
 
   return (
-    <div className="app">
-      <aside className="sidebar" aria-label="Route controls">
+    <div className={`app${sidebarOpen ? ' sidebar-open' : ' sidebar-collapsed'}`}>
+      <button
+        type="button"
+        className="sidebar-handle"
+        aria-expanded={sidebarOpen}
+        aria-controls="route-sidebar"
+        onClick={() => setSidebarOpen(o => !o)}
+      >
+        <span className="sidebar-handle-bar" aria-hidden="true" />
+        <span className="sidebar-handle-label">
+          {sidebarOpen ? 'Hide controls' : 'Show route controls'}
+        </span>
+      </button>
+
+      <aside id="route-sidebar" className="sidebar" aria-label="Route controls">
         <h1>Accessible Walk — Belfast</h1>
         <p className="subtitle">Compare Fastest, Balanced, and Beacon Accessible walking routes using OpenStreetMap accessibility signals.</p>
 
@@ -261,7 +316,7 @@ export default function App() {
           selectedDestination={selectedDestination}
           loading={loading}
           onReset={reset}
-          onRecompute={computeRoute}
+          onRecompute={() => computeRoute(start, end, { force: true })}
         />
 
         <PreferenceList
@@ -275,7 +330,7 @@ export default function App() {
         <MapLegend />
 
         <p className="subtitle" style={{ fontSize: 11, marginTop: 18 }}>
-          Fastest chooses the shortest available walk, Balanced applies lighter accessibility weighting, and Beacon Accessible uses the full preference weighting. Tactile/audio/kerb signals come from OSM crossing tags within 30 m of the route. Busy-road penalty multiplies meters adjacent to primary/secondary/trunk ways. Crash data toggle is display-only until NI dataset is wired in.
+          Fastest chooses the shortest available walk, Balanced applies lighter accessibility weighting, and Beacon Accessible uses the full preference weighting. Tactile/audio/kerb signals come from OSM crossing tags within 30 m of the route. Busy-road penalty multiplies meters adjacent to primary/secondary/trunk ways. Crash data toggle is coming soon.
         </p>
       </aside>
 

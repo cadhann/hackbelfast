@@ -1,5 +1,12 @@
 import { PENALTIES } from '../config/preferences';
-import { haversine, minDistanceToCoords } from '../utils/geo';
+import {
+  bboxesOverlap,
+  haversine,
+  minDistanceToCoords,
+  pointToSegmentMeters,
+  routeBoundingBox,
+  wayBoundingBox
+} from '../utils/geo';
 
 const FORBIDDEN_BLOCK_METERS = 120;
 const FORBIDDEN_BLOCK_RATIO = 0.08;
@@ -9,9 +16,10 @@ export function classifyFeature(el) {
   const tactileYes = t.tactile_paving === 'yes';
   const tactileNo = t.tactile_paving === 'no';
   const audioYes = t['traffic_signals:sound'] === 'yes';
+  const audioNo = t['traffic_signals:sound'] === 'no';
   const lowKerb = t.kerb === 'lowered' || t.kerb === 'flush' || t.kerb === 'no';
   const highKerb = t.kerb === 'raised';
-  return { tactileYes, tactileNo, audioYes, lowKerb, highKerb };
+  return { tactileYes, tactileNo, audioYes, audioNo, lowKerb, highKerb };
 }
 
 function nodesNearRoute(nodes, coords, threshold = 30) {
@@ -23,17 +31,39 @@ function nodesNearRoute(nodes, coords, threshold = 30) {
   return out;
 }
 
-function metersOnRoute(ways, coords, threshold) {
+function metersOnRouteAlongWays(ways, coords, threshold) {
+  if (!ways || ways.length === 0 || coords.length < 2) return 0;
+
+  const routeBbox = routeBoundingBox(coords);
+  const padDeg = (threshold + 5) / 111320;
+  const candidates = [];
+  for (const w of ways) {
+    if (!w.geometry || w.geometry.length === 0) continue;
+    const wb = w._bbox || (w._bbox = wayBoundingBox(w));
+    if (!bboxesOverlap(routeBbox, wb, padDeg)) continue;
+    candidates.push(w);
+  }
+  if (candidates.length === 0) return 0;
+
   let meters = 0;
   for (let i = 0; i < coords.length - 1; i++) {
     const a = coords[i];
     const b = coords[i + 1];
     const segLen = haversine(a, b);
     const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+
     let near = false;
-    for (const w of ways) {
-      for (const g of w.geometry) {
-        if (haversine(mid, [g.lat, g.lon]) < threshold) { near = true; break; }
+    for (const w of candidates) {
+      const wb = w._bbox;
+      if (mid[0] < wb.minLat - padDeg || mid[0] > wb.maxLat + padDeg ||
+          mid[1] < wb.minLon - padDeg || mid[1] > wb.maxLon + padDeg) {
+        continue;
+      }
+      const geom = w.geometry;
+      for (let j = 0; j < geom.length - 1; j++) {
+        const segA = [geom[j].lat, geom[j].lon];
+        const segB = [geom[j + 1].lat, geom[j + 1].lon];
+        if (pointToSegmentMeters(mid, segA, segB) < threshold) { near = true; break; }
       }
       if (near) break;
     }
@@ -43,18 +73,17 @@ function metersOnRoute(ways, coords, threshold) {
 }
 
 function busyMetersOnRoute(busyWays, coords, threshold = 12) {
-  return metersOnRoute(busyWays, coords, threshold);
+  return metersOnRouteAlongWays(busyWays, coords, threshold);
 }
 
 function forbiddenMetersOnRoute(forbiddenWays, coords, threshold = 10) {
-  if (!forbiddenWays || forbiddenWays.length === 0) return 0;
-  return metersOnRoute(forbiddenWays, coords, threshold);
+  return metersOnRouteAlongWays(forbiddenWays, coords, threshold);
 }
 
 function collectRouteSignals(near) {
   let crossings = 0;
   let tactileYes = 0, tactileNo = 0, tactileUnknown = 0;
-  let audioYes = 0, audioNo = 0;
+  let audioYes = 0, audioNo = 0, audioUnknown = 0;
   let kerbLow = 0, kerbHigh = 0, kerbUnknown = 0;
 
   for (const el of near) {
@@ -72,7 +101,8 @@ function collectRouteSignals(near) {
 
     if (isSignalised) {
       if (c.audioYes) audioYes++;
-      else audioNo++;
+      else if (c.audioNo) audioNo++;
+      else audioUnknown++;
     }
 
     if (isCrossing || t.kerb) {
@@ -89,10 +119,20 @@ function collectRouteSignals(near) {
     tactileUnknown,
     audioYes,
     audioNo,
+    audioUnknown,
     kerbLow,
     kerbHigh,
     kerbUnknown
   };
+}
+
+function computeIntrinsicScore(signals) {
+  const pos = signals.tactileYes + signals.audioYes + signals.kerbLow;
+  const neg = signals.tactileNo + signals.audioNo + signals.kerbHigh;
+  const total = pos + neg;
+  if (total === 0) return null;
+  const raw = (pos - neg) / total;
+  return Math.max(0, Math.min(1, (raw + 1) / 2));
 }
 
 export function analyzeRoute(route, accData) {
@@ -101,6 +141,7 @@ export function analyzeRoute(route, accData) {
   const busyMeters = busyMetersOnRoute(accData.busyWays || [], route.coords);
   const forbiddenMeters = forbiddenMetersOnRoute(accData.forbiddenWays || [], route.coords);
   const blocked = forbiddenMeters > Math.max(FORBIDDEN_BLOCK_METERS, route.distance * FORBIDDEN_BLOCK_RATIO);
+  const intrinsicScore = computeIntrinsicScore(signals);
 
   return {
     route,
@@ -108,13 +149,13 @@ export function analyzeRoute(route, accData) {
     signals,
     busyMeters,
     forbiddenMeters,
-    blocked
+    blocked,
+    intrinsicScore
   };
 }
 
 export function scoreRouteAnalysis(analysis, weights) {
   let penalty = 0;
-  let pos = 0, neg = 0, unknown = 0;
 
   penalty += analysis.signals.tactileYes * PENALTIES.tactile_bonus * -weights.tactile;
   penalty += analysis.signals.tactileNo * PENALTIES.tactile_missing * weights.tactile;
@@ -125,30 +166,11 @@ export function scoreRouteAnalysis(analysis, weights) {
   penalty += analysis.busyMeters * PENALTIES.busy_per_meter * weights.avoid_busy;
   penalty += analysis.forbiddenMeters * PENALTIES.forbidden_per_meter * (weights.forbidden || 0);
 
-  pos += analysis.signals.tactileYes * weights.tactile;
-  pos += analysis.signals.audioYes * weights.audio;
-  pos += analysis.signals.kerbLow * weights.kerb;
-
-  neg += analysis.signals.tactileNo * weights.tactile;
-  neg += analysis.signals.audioNo * weights.audio;
-  neg += analysis.signals.kerbHigh * weights.kerb;
-
-  unknown += analysis.signals.tactileUnknown * weights.tactile;
-  unknown += analysis.signals.kerbUnknown * weights.kerb;
-
-  const total = pos + neg + unknown;
-  let score = null;
-  if (total > 0) {
-    const raw = (pos - neg) / total;
-    score = Math.max(0, Math.min(1, (raw + 1) / 2));
-  }
-
   return {
     ...analysis,
     penalty,
-    pos, neg, unknown,
-    effective: analysis.blocked ? Infinity : analysis.route.distance + penalty,
-    score
+    score: analysis.intrinsicScore,
+    effective: analysis.blocked ? Infinity : analysis.route.distance + penalty
   };
 }
 

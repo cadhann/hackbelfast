@@ -3,7 +3,7 @@ import { friendlyFetchError } from './http';
 
 async function fetchOsrm(coords) {
   const path = coords.map(c => `${c.lng},${c.lat}`).join(';');
-  const url = `https://router.project-osrm.org/route/v1/foot/${path}?overview=full&geometries=geojson&steps=false`;
+  const url = `https://router.project-osrm.org/route/v1/foot/${path}?overview=full&geometries=geojson&steps=true`;
   let res;
   try {
     res = await fetch(url);
@@ -14,21 +14,53 @@ async function fetchOsrm(coords) {
   const data = await res.json();
   if (!data.routes || data.routes.length === 0) throw new Error('No route found');
   const r = data.routes[0];
+  const steps = [];
+  for (const leg of r.legs || []) {
+    for (const step of leg.steps || []) {
+      steps.push({
+        distance: step.distance,
+        duration: step.duration,
+        name: step.name,
+        instruction: step.maneuver?.type || ''
+      });
+    }
+  }
   return {
     coords: r.geometry.coordinates.map(([lon, lat]) => [lat, lon]),
     distance: r.distance,
-    duration: r.duration
+    duration: r.duration,
+    steps
   };
 }
 
 function routeFingerprint(coords) {
-  return coords
-    .filter((_, i) => i % Math.max(1, Math.floor(coords.length / 25)) === 0)
-    .map(([lat, lon]) => `${lat.toFixed(4)},${lon.toFixed(4)}`)
-    .join('|');
+  if (coords.length === 0) return '';
+  const samples = 12;
+  const step = Math.max(1, Math.floor(coords.length / samples));
+  const parts = [];
+  for (let i = 0; i < coords.length; i += step) {
+    const [lat, lon] = coords[i];
+    parts.push(`${lat.toFixed(3)},${lon.toFixed(3)}`);
+  }
+  return parts.join('|');
 }
 
-export async function fetchRoutes(start, end) {
+function pickPrimaryError(settled) {
+  for (const s of settled) {
+    if (s.status !== 'rejected') continue;
+    const reason = s.reason;
+    if (reason instanceof Error && reason.message && !reason.message.includes('bad offset')) {
+      return reason.message;
+    }
+  }
+  for (const s of settled) {
+    if (s.status === 'rejected') return friendlyFetchError(s.reason);
+  }
+  return null;
+}
+
+export async function fetchRoutes(start, end, { signal } = {}) {
+  if (signal?.aborted) throw new Error('Request cancelled');
   const offsets = [0, 300, -300];
   const tasks = offsets.map(off => {
     if (off === 0) return fetchOsrm([start, end]);
@@ -37,12 +69,11 @@ export async function fetchRoutes(start, end) {
     return fetchOsrm([start, via, end]);
   });
   const settled = await Promise.allSettled(tasks);
+  if (signal?.aborted) throw new Error('Request cancelled');
+
   const ok = settled.filter(s => s.status === 'fulfilled').map(s => s.value);
   if (ok.length === 0) {
-    const reason = settled
-      .filter(s => s.status === 'rejected')
-      .map(s => friendlyFetchError(s.reason))
-      .filter(Boolean)[0];
+    const reason = pickPrimaryError(settled);
     throw new Error(reason ? `All routing attempts failed: ${reason}` : 'All routing attempts failed');
   }
 

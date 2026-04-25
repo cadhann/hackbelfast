@@ -18,7 +18,7 @@ export const FILTERS = [
   {
     id: 'audio',
     title: 'Audio + physical crossing cues',
-    desc: 'Penalise crossings without audible/vibrating signals.'
+    desc: 'Penalise crossings tagged as missing audible/vibrating signals.'
   },
   {
     id: 'kerb',
@@ -33,6 +33,7 @@ export const FILTERS = [
   {
     id: 'avoid_crash',
     title: 'Avoid collision-prone areas',
-    desc: 'Display-only — NI vehicle crash dataset not yet ingested.'
+    desc: 'Coming soon — NI vehicle crash dataset not yet ingested.',
+    disabled: true
   }
 ];
