@@ -1,26 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Polyline, CircleMarker, Popup, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Polyline, CircleMarker, Popup, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import './App.css';
 
 const BELFAST = [54.5973, -5.9301];
 const BELFAST_BOUNDS = L.latLngBounds([54.52, -6.10], [54.68, -5.78]);
-
-const START_MARKER_ICON = L.divIcon({
-  className: 'journey-marker-icon',
-  html: '<div class="journey-marker journey-marker-start"><span>S</span></div>',
-  iconSize: [34, 44],
-  iconAnchor: [17, 42],
-  popupAnchor: [0, -38]
-});
-
-const END_MARKER_ICON = L.divIcon({
-  className: 'journey-marker-icon',
-  html: '<div class="journey-marker journey-marker-end"><span>E</span></div>',
-  iconSize: [34, 44],
-  iconAnchor: [17, 42],
-  popupAnchor: [0, -38]
-});
 
 const PENALTIES = {
   tactile_missing: 600,
@@ -623,8 +607,6 @@ export default function App() {
           />
           <MapSizeFix />
           <ClickHandler onClick={handleMapClick} />
-          {start && <Marker position={[start.lat, start.lng]} icon={START_MARKER_ICON} title="Journey start" alt="Journey start marker" />}
-          {end && <Marker position={[end.lat, end.lng]} icon={END_MARKER_ICON} title="Journey end" alt="Journey end marker" />}
           {scored.map((s, i) => i !== chosenIndex && (
             <Polyline
               key={`alt-${i}`}
@@ -663,6 +645,24 @@ export default function App() {
               </CircleMarker>
             );
           })}
+          {start && (
+            <CircleMarker
+              center={[start.lat, start.lng]}
+              radius={9}
+              pathOptions={{ color: '#ffffff', fillColor: '#0a8754', fillOpacity: 1, weight: 3 }}
+            >
+              <Popup>Journey start</Popup>
+            </CircleMarker>
+          )}
+          {end && (
+            <CircleMarker
+              center={[end.lat, end.lng]}
+              radius={9}
+              pathOptions={{ color: '#ffffff', fillColor: '#c0392b', fillOpacity: 1, weight: 3 }}
+            >
+              <Popup>Journey end</Popup>
+            </CircleMarker>
+          )}
         </MapContainer>
       </div>
     </div>
