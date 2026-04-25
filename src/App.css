@@ -205,6 +205,38 @@
   background: #aad3df;
 }
 
+.journey-marker-icon {
+  background: transparent;
+  border: 0;
+}
+
+.journey-marker {
+  width: 34px;
+  height: 34px;
+  border: 3px solid #ffffff;
+  border-radius: 50% 50% 50% 8px;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.3);
+  color: #ffffff;
+  display: grid;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1;
+  place-items: center;
+  transform: rotate(-45deg);
+}
+
+.journey-marker span {
+  transform: rotate(45deg);
+}
+
+.journey-marker-start {
+  background: #0a8754;
+}
+
+.journey-marker-end {
+  background: #c0392b;
+}
+
 .map-hint {
   position: absolute;
   top: 12px;

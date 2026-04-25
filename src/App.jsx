@@ -3,18 +3,24 @@ import { MapContainer, TileLayer, Marker, Polyline, CircleMarker, Popup, useMap,
 import L from 'leaflet';
 import './App.css';
 
-import markerIcon from 'leaflet/dist/images/marker-icon.png';
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
-import markerShadow from 'leaflet/dist/images/marker-shadow.png';
-
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: markerIcon2x,
-  iconUrl: markerIcon,
-  shadowUrl: markerShadow
-});
-
 const BELFAST = [54.5973, -5.9301];
 const BELFAST_BOUNDS = L.latLngBounds([54.52, -6.10], [54.68, -5.78]);
+
+const START_MARKER_ICON = L.divIcon({
+  className: 'journey-marker-icon',
+  html: '<div class="journey-marker journey-marker-start"><span>S</span></div>',
+  iconSize: [34, 44],
+  iconAnchor: [17, 42],
+  popupAnchor: [0, -38]
+});
+
+const END_MARKER_ICON = L.divIcon({
+  className: 'journey-marker-icon',
+  html: '<div class="journey-marker journey-marker-end"><span>E</span></div>',
+  iconSize: [34, 44],
+  iconAnchor: [17, 42],
+  popupAnchor: [0, -38]
+});
 
 const PENALTIES = {
   tactile_missing: 600,
@@ -617,8 +623,8 @@ export default function App() {
           />
           <MapSizeFix />
           <ClickHandler onClick={handleMapClick} />
-          {start && <Marker position={[start.lat, start.lng]} />}
-          {end && <Marker position={[end.lat, end.lng]} />}
+          {start && <Marker position={[start.lat, start.lng]} icon={START_MARKER_ICON} title="Journey start" alt="Journey start marker" />}
+          {end && <Marker position={[end.lat, end.lng]} icon={END_MARKER_ICON} title="Journey end" alt="Journey end marker" />}
           {scored.map((s, i) => i !== chosenIndex && (
             <Polyline
               key={`alt-${i}`}
