@@ -214,6 +214,9 @@ async function fetchAccessibilityData(bbox) {
       node["highway"="crossing"](${s},${w},${n},${e});
       node["kerb"](${s},${w},${n},${e});
       way["highway"~"^(primary|secondary|trunk|primary_link|secondary_link|trunk_link)$"](${s},${w},${n},${e});
+      way["highway"~"^(motorway|motorway_link)$"](${s},${w},${n},${e});
+      way["foot"~"^(no|private)$"](${s},${w},${n},${e});
+      way["access"~"^(no|private)$"]["foot"!~"^(yes|designated|permissive)$"](${s},${w},${n},${e});
     );
     out body geom;
   `;
@@ -256,11 +259,24 @@ async function fetchAccessibilityData(bbox) {
 
   const nodes = [];
   const busyWays = [];
+  const forbiddenWays = [];
   for (const el of data.elements || []) {
-    if (el.type === 'node') nodes.push(el);
-    else if (el.type === 'way' && el.geometry) busyWays.push(el);
+    if (el.type === 'node') {
+      nodes.push(el);
+    } else if (el.type === 'way' && el.geometry) {
+      const t = el.tags || {};
+      const isMotorway = t.highway === 'motorway' || t.highway === 'motorway_link';
+      const footAllowed = t.foot === 'yes' || t.foot === 'designated' || t.foot === 'permissive';
+      const footForbidden = t.foot === 'no' || t.foot === 'private';
+      const accessForbidden = (t.access === 'no' || t.access === 'private') && !footAllowed;
+      if (isMotorway || footForbidden || accessForbidden) {
+        forbiddenWays.push(el);
+      } else {
+        busyWays.push(el);
+      }
+    }
   }
-  return { nodes, busyWays, source };
+  return { nodes, busyWays, forbiddenWays, source };
 }
 
 function classifyFeature(el) {
@@ -301,10 +317,33 @@ function busyMetersOnRoute(busyWays, coords, threshold = 12) {
   return meters;
 }
 
+function forbiddenMetersOnRoute(forbiddenWays, coords, threshold = 10) {
+  if (!forbiddenWays || forbiddenWays.length === 0) return 0;
+  let meters = 0;
+  for (let i = 0; i < coords.length - 1; i++) {
+    const a = coords[i];
+    const b = coords[i + 1];
+    const segLen = haversine(a, b);
+    const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    let near = false;
+    for (const w of forbiddenWays) {
+      for (const g of w.geometry) {
+        if (haversine(mid, [g.lat, g.lon]) < threshold) { near = true; break; }
+      }
+      if (near) break;
+    }
+    if (near) meters += segLen;
+  }
+  return meters;
+}
+
 function scoreRoute(route, accData, filters) {
   const near = nodesNearRoute(accData.nodes, route.coords);
   let penalty = 0;
   let pos = 0, neg = 0, unknown = 0;
+
+  const forbiddenMeters = forbiddenMetersOnRoute(accData.forbiddenWays || [], route.coords);
+  const blocked = forbiddenMeters > 5;
 
   for (const el of near) {
     const t = el.tags || {};
@@ -345,8 +384,10 @@ function scoreRoute(route, accData, filters) {
     near,
     penalty,
     busyMeters,
+    forbiddenMeters,
+    blocked,
     pos, neg, unknown,
-    effective: route.distance + penalty,
+    effective: blocked ? Infinity : route.distance + penalty,
     score
   };
 }
@@ -429,14 +470,22 @@ export default function App() {
 
   const chosenIndex = useMemo(() => {
     if (scored.length === 0) return -1;
-    let best = 0;
-    for (let i = 1; i < scored.length; i++) {
-      if (scored[i].effective < scored[best].effective) best = i;
+    let best = -1;
+    for (let i = 0; i < scored.length; i++) {
+      if (scored[i].blocked) continue;
+      if (best === -1 || scored[i].effective < scored[best].effective) best = i;
+    }
+    if (best === -1) {
+      best = 0;
+      for (let i = 1; i < scored.length; i++) {
+        if (scored[i].forbiddenMeters < scored[best].forbiddenMeters) best = i;
+      }
     }
     return best;
   }, [scored]);
 
   const chosen = chosenIndex >= 0 ? scored[chosenIndex] : null;
+  const allBlocked = scored.length > 0 && scored.every(s => s.blocked);
 
   const featureStats = useMemo(() => {
     if (!chosen) return { crossings: 0, tactileYes: 0, tactileNo: 0, lowKerbs: 0 };
@@ -465,6 +514,11 @@ export default function App() {
 
         {error && <div className="error" role="alert">{error}</div>}
         {warning && <div className="warning" role="status">{warning}</div>}
+        {allBlocked && (
+          <div className="error" role="alert">
+            All candidate routes pass along motorways or no-access ways. Showing the route with the least forbidden distance — please verify on the ground.
+          </div>
+        )}
 
         <div className="section">
           <h2>Points</h2>
@@ -523,7 +577,8 @@ export default function App() {
                   <div className="stat">
                     <span className="stat-label">
                       <strong>Route {i + 1}</strong>
-                      {i === chosenIndex && <span style={{ color: '#0066cc', marginLeft: 6 }}>● chosen</span>}
+                      {i === chosenIndex && !s.blocked && <span style={{ color: '#0066cc', marginLeft: 6 }}>● chosen</span>}
+                      {s.blocked && <span style={{ color: '#c0392b', marginLeft: 6 }}>● blocked</span>}
                     </span>
                     <span className="stat-value">{formatDistance(s.route.distance)}</span>
                   </div>
@@ -531,9 +586,15 @@ export default function App() {
                     <span className="stat-label">Penalty</span>
                     <span className="stat-value">+{Math.round(s.penalty)} m</span>
                   </div>
+                  {s.forbiddenMeters > 0 && (
+                    <div className="stat">
+                      <span className="stat-label" style={{ color: '#c0392b' }}>Motorway / no-access</span>
+                      <span className="stat-value" style={{ color: '#c0392b' }}>{Math.round(s.forbiddenMeters)} m</span>
+                    </div>
+                  )}
                   <div className="stat">
                     <span className="stat-label">Effective length</span>
-                    <span className="stat-value">{formatDistance(s.effective)}</span>
+                    <span className="stat-value">{s.blocked ? '∞ (excluded)' : formatDistance(s.effective)}</span>
                   </div>
                 </div>
               ))}
