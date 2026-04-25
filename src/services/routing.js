@@ -1,14 +1,13 @@
-import { BELFAST_DEMO_ROUTE_CORRIDORS, BELFAST_DEMO_SOURCE } from '../data/belfastDemoSeed';
-import { haversine, offsetWaypoint } from '../utils/geo';
+import { offsetWaypoint } from '../utils/geo';
 import { friendlyFetchError } from './http';
 
-const DEMO_CORRIDOR_MATCH_METERS = 180;
-const DEMO_WALKING_METERS_PER_SECOND = 1.25;
-const WALKING_METERS_PER_SECOND = 1.25;
+const ROUTE_OFFSETS_METERS = [0, 600, -600, 1200, -1200, 2000, -2000];
+const MAX_UNIQUE_ROUTES = 6;
+const ROUTING_BASE_URL = 'https://routing.openstreetmap.de/routed-foot/route/v1/driving';
 
-function osrmRouteToShape(r) {
+function normalizeRoute(route) {
   const steps = [];
-  for (const leg of r.legs || []) {
+  for (const leg of route.legs || []) {
     for (const step of leg.steps || []) {
       steps.push({
         distance: step.distance,
@@ -19,33 +18,40 @@ function osrmRouteToShape(r) {
       });
     }
   }
+
   return {
-    coords: r.geometry.coordinates.map(([lon, lat]) => [lat, lon]),
-    distance: r.distance,
-    duration: r.distance / WALKING_METERS_PER_SECOND,
-    steps: steps.map(s => ({ ...s, duration: s.distance / WALKING_METERS_PER_SECOND }))
+    coords: route.geometry.coordinates.map(([lon, lat]) => [lat, lon]),
+    distance: route.distance,
+    duration: route.duration,
+    steps
   };
 }
 
-async function fetchOsrm(coords, { alternatives = false } = {}) {
+async function fetchOsrmRoutes(coords, { alternatives = false, signal } = {}) {
   const path = coords.map(c => `${c.lng},${c.lat}`).join(';');
-  const altParam = alternatives ? '&alternatives=3' : '';
-  const url = `https://router.project-osrm.org/route/v1/foot/${path}?overview=full&geometries=geojson&steps=true${altParam}`;
+  const params = new URLSearchParams({
+    overview: 'full',
+    geometries: 'geojson',
+    steps: 'true'
+  });
+  if (alternatives) params.set('alternatives', '3');
+
+  const url = `${ROUTING_BASE_URL}/${path}?${params.toString()}`;
   let res;
   try {
-    res = await fetch(url);
+    res = await fetch(url, { signal });
   } catch (e) {
     throw new Error(`Routing service unreachable: ${friendlyFetchError(e)}`);
   }
   if (!res.ok) throw new Error(`Routing failed (${res.status})`);
   const data = await res.json();
   if (!data.routes || data.routes.length === 0) throw new Error('No route found');
-  return data.routes.map(osrmRouteToShape);
+  return data.routes.map(normalizeRoute);
 }
 
 function routeFingerprint(coords) {
   if (coords.length === 0) return '';
-  const samples = 16;
+  const samples = 18;
   const step = Math.max(1, Math.floor(coords.length / samples));
   const parts = [];
   for (let i = 0; i < coords.length; i += step) {
@@ -53,50 +59,6 @@ function routeFingerprint(coords) {
     parts.push(`${lat.toFixed(4)},${lon.toFixed(4)}`);
   }
   return parts.join('|');
-}
-
-function routeDistance(coords) {
-  let distance = 0;
-  for (let i = 0; i < coords.length - 1; i++) {
-    distance += haversine(coords[i], coords[i + 1]);
-  }
-  return distance;
-}
-
-function distanceToEndpoint(point, endpoint) {
-  return haversine([point.lat, point.lng], [endpoint.lat, endpoint.lng]);
-}
-
-function getDemoCorridorDirection(corridor, start, end) {
-  const [a, b] = corridor.endpoints;
-  const forward =
-    distanceToEndpoint(start, a) <= DEMO_CORRIDOR_MATCH_METERS &&
-    distanceToEndpoint(end, b) <= DEMO_CORRIDOR_MATCH_METERS;
-  if (forward) return 'forward';
-
-  const reverse =
-    distanceToEndpoint(start, b) <= DEMO_CORRIDOR_MATCH_METERS &&
-    distanceToEndpoint(end, a) <= DEMO_CORRIDOR_MATCH_METERS;
-  return reverse ? 'reverse' : null;
-}
-
-function getDemoRouteCandidates(start, end) {
-  const corridor = BELFAST_DEMO_ROUTE_CORRIDORS.find(c => getDemoCorridorDirection(c, start, end));
-  if (!corridor) return [];
-  const direction = getDemoCorridorDirection(corridor, start, end);
-
-  return corridor.candidates.map(candidate => {
-    const coords = direction === 'reverse' ? [...candidate.coords].reverse() : candidate.coords;
-    const distance = routeDistance(coords);
-    return {
-      coords,
-      distance,
-      duration: distance / DEMO_WALKING_METERS_PER_SECOND,
-      steps: [],
-      source: BELFAST_DEMO_SOURCE,
-      label: candidate.label
-    };
-  });
 }
 
 function pickPrimaryError(settled) {
@@ -115,21 +77,20 @@ function pickPrimaryError(settled) {
 
 export async function fetchRoutes(start, end, { signal } = {}) {
   if (signal?.aborted) throw new Error('Request cancelled');
-  const offsets = [0, 600, -600, 1200, -1200, 2000, -2000];
-  const tasks = offsets.map((off, idx) => {
-    if (off === 0) return fetchOsrm([start, end], { alternatives: true });
+  const tasks = ROUTE_OFFSETS_METERS.map(off => {
+    if (off === 0) return fetchOsrmRoutes([start, end], { alternatives: true, signal });
     const via = offsetWaypoint(start, end, off);
     if (!via) return Promise.reject(new Error('bad offset'));
-    return fetchOsrm([start, via, end]);
+    return fetchOsrmRoutes([start, via, end], { signal });
   });
   const settled = await Promise.allSettled(tasks);
   if (signal?.aborted) throw new Error('Request cancelled');
 
-  const ok = settled.filter(s => s.status === 'fulfilled').flatMap(s => s.value);
-  if (ok.length === 0) {
-    const demoRoutes = getDemoRouteCandidates(start, end);
-    if (demoRoutes.length > 0) return demoRoutes;
+  const ok = settled
+    .filter(s => s.status === 'fulfilled')
+    .flatMap(s => s.value);
 
+  if (ok.length === 0) {
     const reason = pickPrimaryError(settled);
     throw new Error(reason ? `All routing attempts failed: ${reason}` : 'All routing attempts failed');
   }
@@ -141,6 +102,7 @@ export async function fetchRoutes(start, end, { signal } = {}) {
     if (seen.has(fp)) continue;
     seen.add(fp);
     unique.push(r);
+    if (unique.length >= MAX_UNIQUE_ROUTES) break;
   }
-  return unique;
+  return unique.sort((a, b) => a.distance - b.distance || a.duration - b.duration);
 }

@@ -736,23 +736,64 @@ html, body, #root {
   flex-shrink: 0;
 }
 
-/* ===== Local context (existing component) ===== */
-.local-context {
-  margin-top: 16px;
+.section-title-note {
+  color: var(--gm-text-muted);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* ===== Landmark directions ===== */
+.instruction-card-list {
+  display: grid;
+  gap: 8px;
+}
+
+.instruction-card {
   background: var(--gm-surface);
+  border: 1px solid #eef0f3;
   border-radius: var(--gm-radius);
   padding: 12px 14px;
 }
-.local-context h2,
-.local-context h3 {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--gm-text-muted);
-  margin: 0 0 8px;
-  font-weight: 500;
+
+.instruction-card-header {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  justify-content: space-between;
 }
-.local-context ul { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.5; }
+
+.instruction-card-label {
+  color: var(--gm-blue);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.instruction-card-meta {
+  color: var(--gm-text-muted);
+  font-size: 11px;
+}
+
+.instruction-card-text {
+  display: block;
+  font-size: 14px;
+  line-height: 1.45;
+  margin-top: 6px;
+}
+
+.instruction-card-cue {
+  border-top: 1px solid #eef1f5;
+  color: var(--gm-text-muted);
+  display: block;
+  font-size: 12px;
+  line-height: 1.4;
+  margin-top: 8px;
+  padding-top: 8px;
+}
 
 /* ===== Desktop adaptation ===== */
 @media (min-width: 768px) {

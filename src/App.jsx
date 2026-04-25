@@ -2,18 +2,19 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import BottomSheet from './components/BottomSheet';
 import DirectionsBar from './components/DirectionsBar';
 import JourneyMap from './components/JourneyMap';
-import LocalContextPanel from './components/LocalContextPanel';
 import MapLegend from './components/MapLegend';
 import PreferenceList from './components/PreferenceList';
 import RouteDetails from './components/RouteDetails';
+import RouteInstructionCards from './components/RouteInstructionCards';
 import RouteModeCards from './components/RouteModeCards';
 import { formatDistance, formatDuration } from './utils/format';
 import { FILTERS } from './config/preferences';
 import { DEFAULT_ROUTE_MODE_ID } from './config/routeModes';
-import { BELFAST_DEMO_SOURCE, getDemoAccessibilityData, getRouteDemoNotes } from './data/belfastDemoSeed';
+import { getDemoAccessibilityData } from './data/belfastDemoSeed';
 import { fetchAccessibilityData } from './services/accessibilityData';
 import { buildRouteModes } from './services/routeModes';
 import { cacheKey, getCached, setCached } from './services/routeCache';
+import { buildRouteInstructionCards } from './services/routeInstructions';
 import { fetchRoutes } from './services/routing';
 import { analyzeRoute, getFeatureStats, scoreRouteAnalysis } from './services/routeScoring';
 import { combinedBbox, samePoint } from './utils/geo';
@@ -193,9 +194,6 @@ export default function App() {
       const rs = await fetchRoutes(startPoint, endPoint);
       if (reqId !== requestIdRef.current) return;
       setRoutes(rs);
-      const routeWarning = rs.some(route => route.source === BELFAST_DEMO_SOURCE)
-        ? 'Using a Belfast demo corridor because the live routing API did not return this route.'
-        : null;
       const bbox = combinedBbox(rs);
       let nextAcc = EMPTY_ACC_DATA;
       let nextWarning = null;
@@ -203,13 +201,11 @@ export default function App() {
         const data = await fetchAccessibilityData(bbox);
         if (reqId !== requestIdRef.current) return;
         nextAcc = data;
-        nextWarning = routeWarning;
       } catch (e) {
         if (reqId !== requestIdRef.current) return;
         nextAcc = getDemoAccessibilityData(bbox);
         nextWarning = (
-          `${routeWarning ? `${routeWarning} ` : ''}` +
-          'Using Belfast demo corridor seed data because the OSM accessibility lookup is blocked or unreachable on this network. ' +
+          'Using Belfast accessibility seed data because the OSM accessibility lookup is blocked or unreachable on this network. ' +
           e.message
         );
       }
@@ -268,7 +264,12 @@ export default function App() {
   }, [routes]);
   const allBlocked = routeAnalyses.length > 0 && routeAnalyses.every(route => route.blocked);
   const featureStats = useMemo(() => getFeatureStats(chosen), [chosen]);
-  const localNotes = useMemo(() => getRouteDemoNotes(chosen), [chosen]);
+  const routeInstructions = useMemo(() => {
+    return buildRouteInstructionCards(chosen, {
+      selectedStart,
+      selectedDestination
+    });
+  }, [chosen, selectedStart, selectedDestination]);
 
   const hint = !start
     ? 'Click in Belfast to set your start point'
@@ -431,10 +432,10 @@ export default function App() {
           onChange={(id, checked) => setFilters(prev => ({ ...prev, [id]: checked }))}
         />
         <RouteDetails chosen={chosen} selectedMode={selectedMode} featureStats={featureStats} filters={filters} />
-        <LocalContextPanel notes={localNotes} />
+        <RouteInstructionCards instructions={routeInstructions} />
         <MapLegend />
         <p className="footnote">
-          Fastest = shortest walk. Balanced applies lighter accessibility weighting. Beacon Accessible uses the full preference set. Crossing data comes from OSM tags within 30 m of the route. Crash data is coming soon.
+          Fastest = shortest walk. Balanced applies lighter accessibility weighting. Beacon Accessible uses the full preference set. Crossing data comes from OSM tags within 30 m of the route. Steps, pavement width, and streetlights use nearby OSM way and node tags. Crash data is coming soon.
         </p>
       </BottomSheet>
     </div>
