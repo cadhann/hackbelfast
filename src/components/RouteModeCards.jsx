@@ -1,17 +1,17 @@
 import { formatDistance, formatDuration } from '../utils/format';
 
 function formatAccessibilityScore(score) {
-  if (score === null) return 'Unknown';
-  return `${Math.round(score * 100)} / 100`;
+  if (score === null) return '—';
+  return `${Math.round(score * 100)}`;
 }
 
 export default function RouteModeCards({ modes, selectedModeId, onSelect }) {
   if (modes.length === 0) return null;
 
   return (
-    <div className="section">
-      <h2>Route modes</h2>
-      <div className="route-mode-list">
+    <div className="mode-section">
+      <div className="section-title">Routes</div>
+      <div className="mode-row">
         {modes.map(mode => {
           const s = mode.scoredRoute;
           const selected = mode.id === selectedModeId;
@@ -19,49 +19,26 @@ export default function RouteModeCards({ modes, selectedModeId, onSelect }) {
             <button
               key={mode.id}
               type="button"
-              className={`route-mode-card${selected ? ' selected' : ''}`}
+              className={`mode-card${selected ? ' selected' : ''}`}
               onClick={() => onSelect(mode.id)}
               aria-pressed={selected}
             >
-              <span className="route-mode-header">
-                <span>
-                  <span className="route-mode-title">{mode.title}</span>
-                  <span className="route-mode-subtitle">{mode.shortLabel}</span>
-                </span>
-                <span className="route-mode-badges">
-                  <span className="route-mode-candidate">{mode.candidateLabel}</span>
-                  {mode.sameAsFastest && <span className="route-mode-candidate muted">Same as Fastest</span>}
-                  {!mode.accessibilityEvidence && mode.id !== 'fastest' && (
-                    <span className="route-mode-candidate muted">No access data</span>
-                  )}
-                  {selected && <span className="route-mode-selected">Chosen</span>}
-                </span>
-              </span>
-              <span className="route-mode-description">{mode.description}</span>
-              {s && (
+              <div className="mode-card-top">
+                <span className="mode-card-title">{mode.title}</span>
+                {selected && <span className="mode-chosen-pill">Selected</span>}
+              </div>
+              {s ? (
                 <>
-                  <span className="route-mode-metrics" aria-label={`${mode.title} metrics`}>
-                    <span className="route-mode-metric">
-                      <span>Distance</span>
-                      <strong>{formatDistance(s.route.distance)}</strong>
-                    </span>
-                    <span className="route-mode-metric">
-                      <span>Time</span>
-                      <strong>{formatDuration(s.route.duration)}</strong>
-                    </span>
-                    <span className="route-mode-metric">
-                      <span>Crossings</span>
-                      <strong>{s.signals.crossings || 0}</strong>
-                    </span>
-                    <span className="route-mode-metric">
-                      <span>Access score</span>
-                      <strong>{formatAccessibilityScore(s.score)}</strong>
-                    </span>
-                  </span>
-                  <span className="route-mode-reasons">
-                    {mode.reasons.map(reason => <span key={reason}>{reason}</span>)}
-                  </span>
+                  <div className="mode-card-time">{formatDuration(s.route.duration)}</div>
+                  <div className="mode-card-meta">
+                    <span>{formatDistance(s.route.distance)}</span>
+                    <span className="mode-dot" aria-hidden="true">·</span>
+                    <span>Score {formatAccessibilityScore(s.score)}</span>
+                  </div>
+                  <div className="mode-card-sub">{mode.shortLabel}</div>
                 </>
+              ) : (
+                <div className="mode-card-meta">No candidate</div>
               )}
             </button>
           );

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import BottomSheet from './components/BottomSheet';
+import DirectionsBar from './components/DirectionsBar';
 import JourneyMap from './components/JourneyMap';
 import LocalContextPanel from './components/LocalContextPanel';
 import MapLegend from './components/MapLegend';
-import PlaceSearch from './components/PlaceSearch';
-import PointsPanel from './components/PointsPanel';
 import PreferenceList from './components/PreferenceList';
 import RouteDetails from './components/RouteDetails';
 import RouteModeCards from './components/RouteModeCards';
+import { formatDistance, formatDuration } from './utils/format';
 import { FILTERS } from './config/preferences';
 import { DEFAULT_ROUTE_MODE_ID } from './config/routeModes';
 import { BELFAST_DEMO_SOURCE, getDemoAccessibilityData, getRouteDemoNotes } from './data/belfastDemoSeed';
@@ -251,111 +252,31 @@ export default function App() {
     ? 'Click again to set your destination'
     : null;
 
+  const swapPoints = () => {
+    setStart(end); setEnd(start);
+    setSelectedStart(selectedDestination); setSelectedDestination(selectedStart);
+    setStartQuery(destinationQuery); setDestinationQuery(startQuery);
+    closeSearches();
+  };
+
+  const peekContent = chosen ? (
+    <div className="sheet-peek-summary">
+      <div className="sheet-peek-time">{formatDuration(chosen.route.duration)}</div>
+      <div className="sheet-peek-meta">
+        <span>{formatDistance(chosen.route.distance)}</span>
+        <span className="dot">·</span>
+        <span>{selectedMode?.title || 'Route'}</span>
+      </div>
+    </div>
+  ) : (
+    <div className="sheet-peek-summary muted">
+      <div className="sheet-peek-time">No route yet</div>
+      <div className="sheet-peek-meta">{hint || 'Pick a start and destination'}</div>
+    </div>
+  );
+
   return (
-    <div className={`app${sidebarOpen ? ' sidebar-open' : ' sidebar-collapsed'}`}>
-      <button
-        type="button"
-        className="sidebar-handle"
-        aria-expanded={sidebarOpen}
-        aria-controls="route-sidebar"
-        onClick={() => setSidebarOpen(o => !o)}
-      >
-        <span className="sidebar-handle-bar" aria-hidden="true" />
-        <span className="sidebar-handle-label">
-          {sidebarOpen ? 'Hide controls' : 'Show route controls'}
-        </span>
-      </button>
-
-      <aside id="route-sidebar" className="sidebar" aria-label="Route controls">
-        <h1>Accessible Walk — Belfast</h1>
-        <p className="subtitle">Compare Fastest, Balanced, and Beacon Accessible walking routes using OpenStreetMap accessibility signals.</p>
-
-        {error && <div className="error" role="alert">{error}</div>}
-        {warning && <div className="warning" role="status">{warning}</div>}
-        {allBlocked && (
-          <div className="error" role="alert">
-            All candidate routes pass along motorways or no-access ways. Showing the route with the least forbidden distance — please verify on the ground.
-          </div>
-        )}
-
-        <PlaceSearch
-          title="Start search"
-          inputId="start-search"
-          query={startQuery}
-          placeholder="Try Queen's, City Hall, Lanyon Place..."
-          isOpen={startSearchOpen}
-          results={startResults}
-          emptyMessage="No seeded Belfast start point found."
-          selectedOtherPlace={selectedDestination}
-          otherPoint={end}
-          clearLabel="Clear start"
-          clearDisabled={!start && !startQuery}
-          onQueryChange={(value) => {
-            setStartQuery(value);
-            setStartSearchOpen(true);
-            setDestinationSearchOpen(false);
-            setSelectedStart(null);
-          }}
-          onFocus={() => {
-            setStartSearchOpen(true);
-            setDestinationSearchOpen(false);
-          }}
-          onSelect={selectStart}
-          onClear={clearStart}
-        />
-
-        <PlaceSearch
-          title="Destination search"
-          inputId="destination-search"
-          query={destinationQuery}
-          placeholder="Try Grand Central, City Hall, Titanic..."
-          isOpen={destinationSearchOpen}
-          results={destinationResults}
-          emptyMessage="No seeded Belfast destination found."
-          selectedOtherPlace={selectedStart}
-          otherPoint={start}
-          clearLabel="Clear destination"
-          clearDisabled={!end && !destinationQuery}
-          onQueryChange={(value) => {
-            setDestinationQuery(value);
-            setDestinationSearchOpen(true);
-            setStartSearchOpen(false);
-            setSelectedDestination(null);
-          }}
-          onFocus={() => {
-            setDestinationSearchOpen(true);
-            setStartSearchOpen(false);
-          }}
-          onSelect={selectDestination}
-          onClear={clearDestination}
-        />
-
-        <PointsPanel
-          start={start}
-          end={end}
-          selectedStart={selectedStart}
-          selectedDestination={selectedDestination}
-          loading={loading}
-          onReset={reset}
-          onRecompute={() => computeRoute(start, end, { force: true })}
-        />
-
-        <PreferenceList
-          filters={filters}
-          filterOptions={FILTERS}
-          onChange={(id, checked) => setFilters(prev => ({ ...prev, [id]: checked }))}
-        />
-
-        <RouteModeCards modes={routeModes} selectedModeId={selectedMode?.id || selectedModeId} onSelect={setSelectedModeId} />
-        <RouteDetails chosen={chosen} selectedMode={selectedMode} featureStats={featureStats} filters={filters} />
-        <LocalContextPanel notes={localNotes} />
-        <MapLegend />
-
-        <p className="subtitle" style={{ fontSize: 11, marginTop: 18 }}>
-          Fastest chooses the shortest available walk, Balanced applies lighter accessibility weighting, and Beacon Accessible uses the full preference weighting. Tactile/audio/kerb signals come from OSM crossing tags within 30 m of the route. Busy-road penalty multiplies meters adjacent to primary/secondary/trunk ways. Crash data toggle is coming soon.
-        </p>
-      </aside>
-
+    <div className={`app${sidebarOpen ? ' sheet-open' : ' sheet-peek'}`}>
       <JourneyMap
         hint={hint}
         loading={loading}
@@ -366,6 +287,97 @@ export default function App() {
         chosenIndex={chosenIndex}
         onMapClick={handleMapClick}
       />
+
+      <div className="top-card">
+        <div className="brand-row">
+          <span className="brand-mark" aria-hidden="true">🦮</span>
+          <span className="brand-title">Accessible Walk · Belfast</span>
+        </div>
+        <DirectionsBar
+          startQuery={startQuery}
+          startSearchOpen={startSearchOpen}
+          startResults={startResults}
+          selectedStart={selectedStart}
+          start={start}
+          destinationQuery={destinationQuery}
+          destinationSearchOpen={destinationSearchOpen}
+          destinationResults={destinationResults}
+          selectedDestination={selectedDestination}
+          end={end}
+          onStartChange={(value) => {
+            setStartQuery(value);
+            setStartSearchOpen(true);
+            setDestinationSearchOpen(false);
+            setSelectedStart(null);
+          }}
+          onStartFocus={() => { setStartSearchOpen(true); setDestinationSearchOpen(false); }}
+          onStartClear={clearStart}
+          onSelectStart={selectStart}
+          onDestChange={(value) => {
+            setDestinationQuery(value);
+            setDestinationSearchOpen(true);
+            setStartSearchOpen(false);
+            setSelectedDestination(null);
+          }}
+          onDestFocus={() => { setDestinationSearchOpen(true); setStartSearchOpen(false); }}
+          onDestClear={clearDestination}
+          onSelectDestination={selectDestination}
+          onSwap={swapPoints}
+        />
+        {(error || warning || allBlocked) && (
+          <div className="banner-stack">
+            {error && <div className="banner banner-error" role="alert">{error}</div>}
+            {warning && <div className="banner banner-warn" role="status">{warning}</div>}
+            {allBlocked && (
+              <div className="banner banner-error" role="alert">
+                All candidate routes pass along motorways or no-access ways. Showing the route with the least forbidden distance — please verify on the ground.
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="fab-stack">
+        <button
+          type="button"
+          className="fab"
+          onClick={() => computeRoute(start, end, { force: true })}
+          disabled={!start || !end || loading}
+          aria-label="Recompute route"
+          title="Recompute"
+        >
+          <span aria-hidden="true">{loading ? '…' : '↻'}</span>
+        </button>
+        <button
+          type="button"
+          className="fab"
+          onClick={reset}
+          disabled={!start && !end}
+          aria-label="Clear points"
+          title="Clear"
+        >
+          <span aria-hidden="true">✕</span>
+        </button>
+      </div>
+
+      <BottomSheet
+        open={sidebarOpen}
+        onToggle={() => setSidebarOpen(o => !o)}
+        peek={peekContent}
+      >
+        <RouteModeCards modes={routeModes} selectedModeId={selectedMode?.id || selectedModeId} onSelect={setSelectedModeId} />
+        <PreferenceList
+          filters={filters}
+          filterOptions={FILTERS}
+          onChange={(id, checked) => setFilters(prev => ({ ...prev, [id]: checked }))}
+        />
+        <RouteDetails chosen={chosen} selectedMode={selectedMode} featureStats={featureStats} filters={filters} />
+        <LocalContextPanel notes={localNotes} />
+        <MapLegend />
+        <p className="footnote">
+          Fastest = shortest walk. Balanced applies lighter accessibility weighting. Beacon Accessible uses the full preference set. Crossing data comes from OSM tags within 30 m of the route. Crash data is coming soon.
+        </p>
+      </BottomSheet>
     </div>
   );
 }

@@ -69,9 +69,9 @@ export default function JourneyMap({ hint, loading, start, end, scored, chosen, 
         style={{ height: '100%', width: '100%' }}
       >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          subdomains={['a', 'b', 'c']}
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png"
+          subdomains={['a', 'b', 'c', 'd']}
           maxZoom={19}
           bounds={BELFAST_BOUNDS}
         />
@@ -85,10 +85,16 @@ export default function JourneyMap({ hint, loading, start, end, scored, chosen, 
           />
         ))}
         {chosen && (
-          <Polyline
-            positions={chosen.route.coords}
-            pathOptions={{ color: '#0066cc', weight: 6, opacity: 0.9 }}
-          />
+          <>
+            <Polyline
+              positions={chosen.route.coords}
+              pathOptions={{ color: '#ffffff', weight: 9, opacity: 0.9 }}
+            />
+            <Polyline
+              positions={chosen.route.coords}
+              pathOptions={{ color: '#1a73e8', weight: 6, opacity: 1 }}
+            />
+          </>
         )}
         {chosen && chosen.near.map(el => <FeatureMarker key={el.id} el={el} />)}
         {start && (

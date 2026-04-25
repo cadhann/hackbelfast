@@ -1,43 +1,50 @@
 import { formatDistance, formatDuration } from '../utils/format';
 import TurnByTurn from './TurnByTurn';
 
+function Stat({ label, value }) {
+  return (
+    <div className="stat-row">
+      <span className="stat-label">{label}</span>
+      <span className="stat-value">{value}</span>
+    </div>
+  );
+}
+
 export default function RouteDetails({ chosen, selectedMode, featureStats, filters }) {
   if (!chosen || !selectedMode) return null;
 
   return (
     <>
-      <div className="section">
-        <h2>{selectedMode.title} detail</h2>
-        <div className="summary">
-          <div className="stat"><span className="stat-label">Mode</span><span className="stat-value">{selectedMode.shortLabel}</span></div>
-          <div className="stat"><span className="stat-label">Distance</span><span className="stat-value">{formatDistance(chosen.route.distance)}</span></div>
-          <div className="stat"><span className="stat-label">Walking time</span><span className="stat-value">{formatDuration(chosen.route.duration)}</span></div>
-          <div className="stat"><span className="stat-label">Crossings near route</span><span className="stat-value">{featureStats.crossings}</span></div>
-          <div className="stat"><span className="stat-label">Tactile paving (yes)</span><span className="stat-value">{featureStats.tactileYes}</span></div>
-          <div className="stat"><span className="stat-label">Tactile paving (no)</span><span className="stat-value">{featureStats.tactileNo}</span></div>
-          <div className="stat"><span className="stat-label">Low / flush kerbs</span><span className="stat-value">{featureStats.lowKerbs}</span></div>
-          {filters.avoid_busy && (
-            <div className="stat"><span className="stat-label">Busy-road meters</span><span className="stat-value">{Math.round(chosen.busyMeters)} m</span></div>
-          )}
+      <div className="details-section">
+        <div className="section-title">{selectedMode.title} detail</div>
+        <div className="details-card">
+          <Stat label="Mode" value={selectedMode.shortLabel} />
+          <Stat label="Distance" value={formatDistance(chosen.route.distance)} />
+          <Stat label="Walking time" value={formatDuration(chosen.route.duration)} />
+          <Stat label="Crossings near route" value={featureStats.crossings} />
+          <Stat label="Tactile paving (yes)" value={featureStats.tactileYes} />
+          <Stat label="Tactile paving (no)" value={featureStats.tactileNo} />
+          <Stat label="Low / flush kerbs" value={featureStats.lowKerbs} />
+          {filters.avoid_busy && <Stat label="Busy-road meters" value={`${Math.round(chosen.busyMeters)} m`} />}
           {(filters.avoid_steps || chosen.stepsMeters > 0) && (
-            <div className="stat"><span className="stat-label">Steps along route</span><span className="stat-value">{Math.round(chosen.stepsMeters || 0)} m</span></div>
+            <Stat label="Steps along route" value={`${Math.round(chosen.stepsMeters || 0)} m`} />
           )}
           {(filters.pavement_width || chosen.narrowMeters > 0) && (
-            <div className="stat"><span className="stat-label">Narrow pavement (&lt; 1.5 m)</span><span className="stat-value">{Math.round(chosen.narrowMeters || 0)} m</span></div>
+            <Stat label="Narrow pavement (< 1.5 m)" value={`${Math.round(chosen.narrowMeters || 0)} m`} />
           )}
           {filters.streetlights && (
             <>
-              <div className="stat"><span className="stat-label">Lit segments</span><span className="stat-value">{Math.round(chosen.litMeters || 0)} m</span></div>
-              <div className="stat"><span className="stat-label">Unlit segments</span><span className="stat-value">{Math.round(chosen.unlitMeters || 0)} m</span></div>
-              <div className="stat"><span className="stat-label">Street lamps nearby</span><span className="stat-value">{chosen.streetLampCount || 0}</span></div>
+              <Stat label="Lit segments" value={`${Math.round(chosen.litMeters || 0)} m`} />
+              <Stat label="Unlit segments" value={`${Math.round(chosen.unlitMeters || 0)} m`} />
+              <Stat label="Street lamps nearby" value={chosen.streetLampCount || 0} />
             </>
           )}
           {chosen.forbiddenMeters > 0 && (
-            <div className="stat"><span className="stat-label">Restricted-way proximity</span><span className="stat-value">{Math.round(chosen.forbiddenMeters)} m</span></div>
+            <Stat label="Restricted-way proximity" value={`${Math.round(chosen.forbiddenMeters)} m`} />
           )}
           {chosen.score !== null && (
             <>
-              <div className="stat" style={{ marginTop: 6 }}>
+              <div className="stat-row" style={{ marginTop: 4 }}>
                 <span className="stat-label">Accessibility score</span>
                 <span className="stat-value">{Math.round(chosen.score * 100)} / 100</span>
               </div>
@@ -47,7 +54,7 @@ export default function RouteDetails({ chosen, selectedMode, featureStats, filte
             </>
           )}
           {selectedMode.reasons?.length > 0 && (
-            <div className="route-mode-detail-notes">
+            <div className="reasons-list">
               {selectedMode.reasons.map(reason => <div key={reason}>{reason}</div>)}
             </div>
           )}

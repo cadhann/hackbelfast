@@ -16,14 +16,12 @@ function describe(step, index, total) {
   const road = step.name && step.name.trim() ? step.name : 'unnamed way';
   const type = step.instruction;
   const mod = step.modifier;
-
   if (index === 0 || type === 'depart') return `Head off along ${road}`;
   if (type === 'arrive' || index === total - 1) return `Arrive at your destination`;
   if (type === 'roundabout' || type === 'rotary') return `Take the roundabout onto ${road}`;
   if (type === 'merge') return `Merge onto ${road}`;
   if (type === 'fork') return `Keep ${mod || 'ahead'} onto ${road}`;
   if (mod) return `Turn ${mod} onto ${road}`;
-  if (type === 'continue' || type === 'new name') return `Continue onto ${road}`;
   return `Continue onto ${road}`;
 }
 
@@ -34,11 +32,11 @@ export default function TurnByTurn({ steps }) {
   const visible = expanded ? steps : steps.slice(0, 6);
 
   return (
-    <div className="section">
-      <h2>Turn-by-turn</h2>
+    <div className="details-section">
+      <div className="section-title">Turn-by-turn</div>
       <ol className="turn-list">
         {visible.map((step, i) => {
-          const arrow = ARROWS[step.modifier] || ARROWS[step.instruction] || '\u2022';
+          const arrow = ARROWS[step.modifier] || ARROWS[step.instruction] || '•';
           return (
             <li key={i} className="turn-item">
               <span className="turn-arrow" aria-hidden="true">{arrow}</span>
@@ -55,8 +53,7 @@ export default function TurnByTurn({ steps }) {
       {steps.length > 6 && (
         <button
           type="button"
-          className="btn"
-          style={{ marginTop: 8 }}
+          className="link-btn"
           onClick={() => setExpanded(v => !v)}
         >
           {expanded ? 'Show fewer steps' : `Show all ${steps.length} steps`}
