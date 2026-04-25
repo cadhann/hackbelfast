@@ -167,6 +167,13 @@ function combinedBbox(routes, padding = 0.0015) {
   return [minLat - padding, minLon - padding, maxLat + padding, maxLon + padding];
 }
 
+const OVERPASS_MIRRORS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
+];
+
 async function fetchAccessibilityData(bbox) {
   const [s, w, n, e] = bbox;
   const query = `
@@ -178,19 +185,44 @@ async function fetchAccessibilityData(bbox) {
     );
     out body geom;
   `;
-  const res = await fetch('https://overpass-api.de/api/interpreter', {
-    method: 'POST',
-    body: 'data=' + encodeURIComponent(query)
-  });
-  if (!res.ok) throw new Error(`Overpass query failed (${res.status})`);
-  const data = await res.json();
-  const nodes = [];
-  const busyWays = [];
-  for (const el of data.elements || []) {
-    if (el.type === 'node') nodes.push(el);
-    else if (el.type === 'way' && el.geometry) busyWays.push(el);
+  const body = 'data=' + encodeURIComponent(query);
+  let lastErr = null;
+  for (const url of OVERPASS_MIRRORS) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 20000);
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body,
+          signal: ctrl.signal
+        });
+        clearTimeout(timer);
+        if (res.status === 429 || res.status === 504) {
+          lastErr = new Error(`${url} → ${res.status}`);
+          await new Promise(r => setTimeout(r, 800));
+          continue;
+        }
+        if (!res.ok) {
+          lastErr = new Error(`${url} → ${res.status}`);
+          break;
+        }
+        const data = await res.json();
+        const nodes = [];
+        const busyWays = [];
+        for (const el of data.elements || []) {
+          if (el.type === 'node') nodes.push(el);
+          else if (el.type === 'way' && el.geometry) busyWays.push(el);
+        }
+        return { nodes, busyWays };
+      } catch (err) {
+        lastErr = err;
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
   }
-  return { nodes, busyWays };
+  throw new Error(`All Overpass mirrors failed (last: ${lastErr?.message || 'unknown'})`);
 }
 
 function classifyFeature(el) {
