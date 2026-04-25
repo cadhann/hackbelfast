@@ -5,7 +5,6 @@ import JourneyMap from './components/JourneyMap';
 import MapLegend from './components/MapLegend';
 import PreferenceList from './components/PreferenceList';
 import RouteDetails from './components/RouteDetails';
-import RouteInstructionCards from './components/RouteInstructionCards';
 import RouteModeCards from './components/RouteModeCards';
 import { formatDistance, formatDuration } from './utils/format';
 import { FILTERS } from './config/preferences';
@@ -14,7 +13,6 @@ import { getDemoAccessibilityData } from './data/belfastDemoSeed';
 import { fetchAccessibilityData } from './services/accessibilityData';
 import { buildRouteModes } from './services/routeModes';
 import { cacheKey, getCached, setCached } from './services/routeCache';
-import { buildRouteInstructionCards } from './services/routeInstructions';
 import { fetchRoutes } from './services/routing';
 import { analyzeRoute, getFeatureStats, scoreRouteAnalysis } from './services/routeScoring';
 import { combinedBbox, samePoint } from './utils/geo';
@@ -179,7 +177,7 @@ export default function App() {
     setError(null); setWarning(null);
   };
 
-  const computeRoute = async (startPoint, endPoint, { force = false } = {}) => {
+  const computeRoute = async (startPoint, endPoint) => {
     if (!startPoint || !endPoint) return;
     if (samePoint(startPoint, endPoint)) {
       rejectSamePoint();
@@ -190,15 +188,13 @@ export default function App() {
     const reqId = ++requestIdRef.current;
     const key = cacheKey(startPoint, endPoint);
 
-    if (!force) {
-      const cached = getCached(key);
-      if (cached) {
-        setRoutes(cached.routes);
-        setAccData(cached.accData);
-        setError(null);
-        setWarning(cached.warning || null);
-        return;
-      }
+    const cached = getCached(key);
+    if (cached) {
+      setRoutes(cached.routes);
+      setAccData(cached.accData);
+      setError(null);
+      setWarning(cached.warning || null);
+      return;
     }
 
     setLoading(true); setError(null); setWarning(null);
@@ -276,12 +272,6 @@ export default function App() {
   }, [routes]);
   const allBlocked = routeAnalyses.length > 0 && routeAnalyses.every(route => route.blocked);
   const featureStats = useMemo(() => getFeatureStats(chosen), [chosen]);
-  const routeInstructions = useMemo(() => {
-    return buildRouteInstructionCards(chosen, {
-      selectedStart,
-      selectedDestination
-    });
-  }, [chosen, selectedStart, selectedDestination]);
 
   const hint = !start
     ? 'Click in Belfast to set your start point'
@@ -379,19 +369,6 @@ export default function App() {
             <span className="status-text">Routing… finding accessible options</span>
           </div>
         )}
-        {!loading && start && end && chosen && (
-          <button
-            type="button"
-            className="route-status ready"
-            onClick={() => computeRoute(start, end, { force: true })}
-            aria-label="Reroute with current preferences"
-          >
-            <span className="status-icon" aria-hidden="true">↻</span>
-            <span className="status-text">
-              Route ready · tap to <strong>reroute</strong>
-            </span>
-          </button>
-        )}
         {!loading && start && end && !chosen && !error && (
           <div className="route-status pending" role="status">
             <span className="status-icon" aria-hidden="true">…</span>
@@ -447,7 +424,6 @@ export default function App() {
           }}
         />
         <RouteDetails chosen={chosen} selectedMode={selectedMode} featureStats={featureStats} filters={filters} />
-        <RouteInstructionCards instructions={routeInstructions} />
         <MapLegend />
         <p className="footnote">
           Fastest = shortest walk. Balanced applies lighter accessibility weighting. Beacon Accessible uses the full preference set. Crossing data comes from OSM tags within 30 m of the route. The wider score model can also use nearby steps, pavement width, lighting, surface, gradient, support places, station access, and seeded community reports where known. Unknown data stays unknown rather than being treated as missing.

@@ -293,14 +293,6 @@ html, body, #root {
   background: #e8f0fe;
   color: var(--gm-blue-dark);
 }
-.route-status.ready {
-  background: var(--gm-bg);
-  color: var(--gm-text);
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.route-status.ready:hover { background: var(--gm-surface); }
-.route-status.ready strong { color: var(--gm-blue); font-weight: 600; }
 .route-status.pending {
   background: var(--gm-surface);
   color: var(--gm-text-muted);
@@ -833,6 +825,12 @@ html, body, #root {
   padding: 4px 0;
   color: var(--gm-text);
 }
+.legend-note {
+  color: var(--gm-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  margin-top: 8px;
+}
 .legend-dot {
   width: 12px;
   height: 12px;
@@ -844,63 +842,44 @@ html, body, #root {
   box-shadow: 0 0 0 1px var(--gm-border);
 }
 
+.support-div-icon {
+  background: transparent;
+  border: 0;
+}
+
+.support-marker-badge {
+  align-items: center;
+  background: var(--marker-color, #5f6368);
+  border: 2px solid #fff;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px rgba(32, 33, 36, 0.18);
+  color: #fff;
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 700;
+  height: 26px;
+  justify-content: center;
+  line-height: 1;
+  min-width: 26px;
+  padding: 0 7px;
+  text-transform: uppercase;
+}
+
+.support-marker-badge.toilet { --marker-color: #00897b; }
+.support-marker-badge.seating { --marker-color: #ef6c00; }
+.support-marker-badge.station { --marker-color: #5e35b1; }
+.support-marker-badge.report { --marker-color: #b3261e; }
+
+.legend-badge {
+  flex-shrink: 0;
+}
+
 .section-title-note {
   color: var(--gm-text-muted);
   font-size: 11px;
   font-weight: 400;
   letter-spacing: 0;
   text-transform: none;
-}
-
-/* ===== Landmark directions ===== */
-.instruction-card-list {
-  display: grid;
-  gap: 8px;
-}
-
-.instruction-card {
-  background: var(--gm-surface);
-  border: 1px solid #eef0f3;
-  border-radius: var(--gm-radius);
-  padding: 12px 14px;
-}
-
-.instruction-card-header {
-  align-items: baseline;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 12px;
-  justify-content: space-between;
-}
-
-.instruction-card-label {
-  color: var(--gm-blue);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.instruction-card-meta {
-  color: var(--gm-text-muted);
-  font-size: 11px;
-}
-
-.instruction-card-text {
-  display: block;
-  font-size: 14px;
-  line-height: 1.45;
-  margin-top: 6px;
-}
-
-.instruction-card-cue {
-  border-top: 1px solid #eef1f5;
-  color: var(--gm-text-muted);
-  display: block;
-  font-size: 12px;
-  line-height: 1.4;
-  margin-top: 8px;
-  padding-top: 8px;
 }
 
 /* ===== Desktop adaptation ===== */
