@@ -23,31 +23,36 @@ export default function RouteModeCards({
     modePicksByIndex.get(mode.routeIndex).push(mode);
   }
 
+  const visible = candidates
+    .map((c, i) => ({ c, i }))
+    .filter(({ c }) => !c.blocked);
+
+  if (visible.length === 0) return null;
+
   return (
     <div className="mode-section">
-      <div className="section-title">
-        Walking style
-      </div>
-      <div className="style-row" role="tablist">
-        {(modes || []).map(m => (
-          <button
-            key={m.id}
-            type="button"
-            role="tab"
-            className={`style-chip${m.id === activeModeId ? ' active' : ''}`}
-            aria-selected={m.id === activeModeId}
-            onClick={() => onSelectMode(m.id)}
-          >
-            {m.title}
-          </button>
-        ))}
+      <div className="routes-header">
+        <div className="section-title">
+          {visible.length === 1 ? 'Route' : `Routes (${visible.length})`}
+        </div>
+        <div className="style-row" role="tablist" aria-label="Walking style">
+          {(modes || []).map(m => (
+            <button
+              key={m.id}
+              type="button"
+              role="tab"
+              className={`style-chip${m.id === activeModeId ? ' active' : ''}`}
+              aria-selected={m.id === activeModeId}
+              onClick={() => onSelectMode(m.id)}
+            >
+              {m.title}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="section-title">
-        {candidates.length === 1 ? 'Route' : `Routes (${candidates.length})`}
-      </div>
       <div className="route-options">
-        {candidates.map((c, i) => {
+        {visible.map(({ c, i }) => {
           const isSelected = i === selectedIndex;
           const isRecommended = i === recommendedIndex;
           const picks = modePicksByIndex.get(i) || [];
@@ -77,7 +82,6 @@ export default function RouteModeCards({
               <div className="route-option-side">
                 {isRecommended && <span className="route-pill recommended">Recommended</span>}
                 {isSelected && <span className="route-pill selected">Selected</span>}
-                {c.blocked && <span className="route-pill warn">Restricted</span>}
               </div>
             </button>
           );
