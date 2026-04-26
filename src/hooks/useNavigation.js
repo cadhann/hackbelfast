@@ -2,24 +2,31 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { haversine } from '../utils/geo';
 import { playInstructionAudio, preloadAudio } from '../services/elevenlabs';
 
-const TRIGGER_M = 20;  // announce step when user is within 20 m of the maneuver point
-const ARRIVAL_M = 25;  // announce arrival when within 25 m of the destination
+const TRIGGER_M  = 20;  // detect maneuver when user is within 20 m of the point
+const ARRIVAL_M  = 25;  // announce arrival when within 25 m of destination
+// Only play entry TTS if the road segment ahead is long enough that audio
+// won't be cut off by the next maneuver trigger. ~40 m gives ~28 s at walking
+// pace, comfortably longer than any TTS clip.
+const MIN_ROAD_M = 40;
 
 export function describeStep(step, index, total) {
   const road = step.name?.trim() || 'the route';
   const mod = step.modifier;
+
+  if (step.instruction === 'arrive' || index === total - 1) {
+    return 'You have arrived at your destination';
+  }
+  if (step.instruction === 'depart' || index === 0) {
+    return `Head off along ${road}`;
+  }
+
   switch (step.instruction) {
-    case 'depart':      return `Head off along ${road}`;
-    case 'arrive':      return 'You have arrived at your destination';
     case 'roundabout':
-    case 'rotary':      return `Take the roundabout onto ${road}`;
-    case 'merge':       return `Merge onto ${road}`;
-    case 'fork':        return `Keep ${mod || 'ahead'} onto ${road}`;
+    case 'rotary':  return `Take the roundabout onto ${road}`;
+    case 'merge':   return `Merge onto ${road}`;
+    case 'fork':    return `Keep ${mod || 'ahead'} onto ${road}`;
     default:
-      if (index === 0)           return `Head off along ${road}`;
-      if (index === total - 1)   return 'You have arrived at your destination';
-      if (mod)                   return `Turn ${mod} onto ${road}`;
-      return `Continue onto ${road}`;
+      return mod ? `Turn ${mod} onto ${road}` : `Continue onto ${road}`;
   }
 }
 
@@ -37,9 +44,9 @@ export function useNavigation({ steps, endCoord, active, apiKey, voiceId }) {
   const activeRef   = useRef(active);
   const apiKeyRef   = useRef(apiKey);
   const voiceIdRef  = useRef(voiceId);
-  const nextIdxRef  = useRef(0);
-  const arrivedRef  = useRef(false);
-  const spokenRef   = useRef(new Set());
+  const nextIdxRef   = useRef(0);
+  const arrivedRef   = useRef(false);
+  const spokenRef    = useRef(new Set()); // tracks which (idx, phase) combos have been announced
   const wasActiveRef = useRef(false);
 
   useEffect(() => { stepsRef.current    = steps;    }, [steps]);
@@ -53,7 +60,7 @@ export function useNavigation({ steps, endCoord, active, apiKey, voiceId }) {
     if (active && !wasActiveRef.current && steps?.length) {
       nextIdxRef.current = 0;
       arrivedRef.current = false;
-      spokenRef.current  = new Set([0]); // mark step 0 as already announced
+      spokenRef.current  = new Set(['0']); // step 0 announced at startup
       setNextStepIdx(0);
       setArrived(false);
       setDistanceToNext(null);
@@ -61,9 +68,7 @@ export function useNavigation({ steps, endCoord, active, apiKey, voiceId }) {
       const intro = describeStep(steps[0], 0, steps.length);
       playInstructionAudio(`Navigation started. ${intro}`, apiKey, voiceId);
 
-      if (steps[1]) {
-        preloadAudio(describeStep(steps[1], 1, steps.length), apiKey, voiceId);
-      }
+      if (steps[1]) preloadAudio(describeStep(steps[1], 1, steps.length), apiKey, voiceId);
     }
     if (!active) {
       nextIdxRef.current = 0;
@@ -116,18 +121,31 @@ export function useNavigation({ steps, endCoord, active, apiKey, voiceId }) {
 
     if (bestIdx >= 0) setDistanceToNext(Math.round(bestDist));
 
-    if (bestIdx >= 0 && bestDist <= TRIGGER_M && !spokenRef.current.has(bestIdx)) {
-      spokenRef.current.add(bestIdx);
-      const text = describeStep(steps[bestIdx], bestIdx, steps.length);
-      playInstructionAudio(text, apiKey, voiceId);
+    if (bestIdx < 0) return;
+
+    // User has passed the maneuver point — advance to the next road segment
+    if (bestDist <= TRIGGER_M && !spokenRef.current.has(String(bestIdx))) {
+      spokenRef.current.add(String(bestIdx));
       if (navigator.vibrate) navigator.vibrate(50);
 
       const newNext = bestIdx + 1;
       nextIdxRef.current = newNext;
       setNextStepIdx(newNext);
 
+      // Announce the upcoming turn for the road we just entered, but only if
+      // the segment is long enough that the audio won't be cut off.
       if (steps[newNext]) {
-        preloadAudio(describeStep(steps[newNext], newNext, steps.length), apiKey, voiceId);
+        const segStart = steps[bestIdx]?.location;
+        const segEnd   = steps[newNext]?.location;
+        const segLen   = (segStart && segEnd) ? haversine(segStart, segEnd) : Infinity;
+
+        if (segLen >= MIN_ROAD_M) {
+          const text = describeStep(steps[newNext], newNext, steps.length);
+          playInstructionAudio(text, apiKey, voiceId);
+          if (steps[newNext + 1]) {
+            preloadAudio(describeStep(steps[newNext + 1], newNext + 1, steps.length), apiKey, voiceId);
+          }
+        }
       }
     }
   }, []); // empty deps — reads exclusively through refs

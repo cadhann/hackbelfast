@@ -1,13 +1,21 @@
 // Icon metadata for each preference filter
 const PREF_META = {
-  tactile:        { sym: '⠿', bg: '#EDE9FE', fg: '#6D28D9' }, // tactile bumps / braille
-  audio:          { sym: '◎', bg: '#DBEAFE', fg: '#1D4ED8' }, // audio signal
-  kerb:           { sym: '⌇', bg: '#CFFAFE', fg: '#0369A1' }, // kerb/ramp
-  avoid_busy:     { sym: '⊗', bg: '#FEE2E2', fg: '#B91C1C' }, // no busy roads
-  avoid_steps:    { sym: '↗', bg: '#FEF3C7', fg: '#B45309' }, // step-free
-  pavement_width: { sym: '↔', bg: '#D1FAE5', fg: '#065F46' }, // wide pavement
-  streetlights:   { sym: '◉', bg: '#FEF9C3', fg: '#A16207' }, // street lighting
-  avoid_crash:    { sym: '⚠', bg: '#F3F4F6', fg: '#9CA3AF' }, // crash risk (soon)
+  tactile:          { sym: '⠿', bg: '#EDE9FE', fg: '#6D28D9' }, // tactile bumps / braille
+  audio:            { sym: '◎', bg: '#DBEAFE', fg: '#1D4ED8' }, // audio signal
+  kerb:             { sym: '⌇', bg: '#CFFAFE', fg: '#0369A1' }, // kerb/ramp
+  avoid_busy:       { sym: '⊗', bg: '#FEE2E2', fg: '#B91C1C' }, // no busy roads
+  avoid_steps:      { sym: '↗', bg: '#FEF3C7', fg: '#B45309' }, // step-free
+  pavement_width:   { sym: '↔', bg: '#D1FAE5', fg: '#065F46' }, // wide pavement
+  streetlights:     { sym: '◉', bg: '#FEF9C3', fg: '#A16207' }, // street lighting
+  avoid_crash:      { sym: '⚠', bg: '#F3F4F6', fg: '#9CA3AF' }, // crash risk
+  surface_quality:  { sym: '▭', bg: '#CCFBF1', fg: '#0F766E' }, // smooth surface
+  gentle_slope:     { sym: '⏶', bg: '#DCFCE7', fg: '#15803D' }, // gentle gradient
+  simple_navigation:{ sym: '◈', bg: '#E0E7FF', fg: '#4338CA' }, // simple/clear route
+  rest_points:      { sym: '⚑', bg: '#FEF3C7', fg: '#92400E' }, // rest / seating
+  station_access:   { sym: '⊞', bg: '#DBEAFE', fg: '#1E40AF' }, // transit station
+  verified_reports: { sym: '✓', bg: '#DCFCE7', fg: '#166534' }, // verified data
+  prefer_shopping:  { sym: '⊙', bg: '#FCE7F3', fg: '#9D174D' }, // shops & cafes
+  prefer_pleasant:  { sym: '✿', bg: '#ECFCCB', fg: '#3F6212' }, // parks & pedestrian
 };
 
 export default function PreferenceList({ filters, filterOptions, onChange }) {
