@@ -15,7 +15,9 @@ const ALL_FILTERS_OFF = {
   rest_points: false,
   station_access: false,
   verified_reports: false,
-  avoid_crash: false
+  avoid_crash: false,
+  prefer_shopping: false,
+  prefer_pleasant: false
 };
 
 function withFilters(overrides) {
@@ -31,7 +33,9 @@ export const PROFILES = [
     paceId: 'accessible',
     customPaceMps: null,
     modeId: 'balanced',
-    filters: withFilters({ avoid_busy: true })
+    // Default profile keeps a light preference for high-street stretches so
+    // walkers aren't routed through housing estates by accident.
+    filters: withFilters({ avoid_busy: true, prefer_shopping: true })
   },
   {
     id: 'wheelchair',
@@ -100,14 +104,15 @@ export const PROFILES = [
     id: 'pleasant',
     label: 'Pleasant',
     icon: '🌳',
-    description: 'Quieter, well-lit walks even if a bit longer.',
+    description: 'Lively shop streets, park edges and pedestrian zones — even if a bit longer.',
     paceId: 'average',
     customPaceMps: null,
     modeId: 'balanced',
     filters: withFilters({
-      avoid_busy: true,
       streetlights: true,
-      gentle_slope: true
+      gentle_slope: true,
+      prefer_shopping: true,
+      prefer_pleasant: true
     })
   },
   {

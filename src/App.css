@@ -1432,6 +1432,57 @@ html, body, #root {
 .fab-report { color: var(--gm-yellow); }
 .fab-report:hover { background: #fff8e1; }
 
+/* Standalone report symbol — bottom-left on mobile to avoid the FAB stack
+   on the right; bumped up to a more prominent amber pill. */
+.report-corner {
+  position: fixed;
+  left: 14px;
+  bottom: calc(var(--peek-height, 96px) + 16px);
+  transition: bottom 0.28s cubic-bezier(0.2, 0, 0, 1);
+  min-width: 52px;
+  height: 52px;
+  padding: 0 14px;
+  border-radius: 26px;
+  border: 0;
+  background: #f9ab00;
+  color: #1f1300;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(60,64,67,0.28);
+  z-index: 1500;
+}
+.report-corner::after {
+  content: 'Report';
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+.report-corner:hover { background: #fbbc04; }
+.report-corner:active { transform: translateY(1px); }
+
+.app.sheet-open .report-corner {
+  display: none;
+}
+.nav-active .report-corner {
+  bottom: 24px;
+}
+
+@media (min-width: 768px) {
+  .report-corner {
+    left: 24px;
+    bottom: 24px;
+  }
+  .app.sheet-open .report-corner {
+    display: none;
+  }
+}
+
 .report-overlay {
   position: fixed;
   inset: 0;

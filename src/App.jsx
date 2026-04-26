@@ -44,7 +44,12 @@ const EMPTY_ACC_DATA = {
   stations: [],
   communityReports: [],
   roughWays: [],
-  steepWays: []
+  steepWays: [],
+  shopPois: [],
+  residentialWays: [],
+  serviceWays: [],
+  pedestrianFriendlyWays: [],
+  greenSpaceWays: []
 };
 const MOBILE_BREAKPOINT = 720;
 const SEARCH_DEBOUNCE_MS = 220;
@@ -91,7 +96,9 @@ export default function App() {
     rest_points: false,
     station_access: false,
     verified_reports: false,
-    avoid_crash: false
+    avoid_crash: false,
+    prefer_shopping: true,
+    prefer_pleasant: false
   });
   const [sidebarOpen, setSidebarOpen] = useState(!isMobileViewport());
   const [reportOpen, setReportOpen] = useState(false);
@@ -864,17 +871,18 @@ export default function App() {
         )}
       </div>
 
+      {/* Report symbol pinned to bottom-right corner (non-functional) */}
+      <button
+        type="button"
+        className="report-corner"
+        onClick={() => setReportOpen(true)}
+        aria-label="Report an issue"
+        title="Report an issue"
+      >
+        <span aria-hidden="true">⚠</span>
+      </button>
+
       <div className="fab-stack">
-        {/* Report an issue */}
-        <button
-          type="button"
-          className="fab fab-report"
-          onClick={() => setReportOpen(true)}
-          aria-label="Report an issue"
-          title="Report an issue"
-        >
-          <span aria-hidden="true">⚠</span>
-        </button>
         {/* Recalculate — refetch routes ignoring cache */}
         {start && end && !navActive && (
           <button

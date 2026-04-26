@@ -216,6 +216,29 @@ function lampsNearRoute(streetLamps, coords, threshold = 25) {
   return pointsNearRoute(streetLamps, coords, threshold).length;
 }
 
+function shopsNearRoute(shopPois, coords, threshold = 30) {
+  return pointsNearRoute(shopPois, coords, threshold).length;
+}
+
+function residentialMetersOnRoute(residentialWays, coords, threshold = 12) {
+  return metersOnRouteAlongWays(residentialWays, coords, threshold);
+}
+
+function serviceMetersOnRoute(serviceWays, coords, threshold = 10) {
+  return metersOnRouteAlongWays(serviceWays, coords, threshold);
+}
+
+function pedestrianMetersOnRoute(pedestrianWays, coords, threshold = 12) {
+  return metersOnRouteAlongWays(pedestrianWays, coords, threshold);
+}
+
+// "Park-adjacent" meters: how much of the route runs near a green-space edge.
+// We treat the polygon ring as a way and check proximity, which approximates
+// "walking alongside a park" without needing point-in-polygon.
+function parkAdjacentMetersOnRoute(greenWays, coords, threshold = 30) {
+  return metersOnRouteAlongWays(greenWays, coords, threshold);
+}
+
 function parseInclinePercent(value) {
   if (value === null || value === undefined) return null;
   if (typeof value === 'number') return Number.isFinite(value) ? Math.abs(value) : null;
@@ -792,6 +815,17 @@ export function analyzeRoute(route, accData) {
   const crashRiskMeters = metersOnRouteAlongWays(crashRiskCorridors, route.coords, 12);
   const complexityFromRoute = summarizeDecisionPoints(route);
 
+  const shopCount = shopsNearRoute(accData?.shopPois || [], route.coords);
+  const residentialMeters = residentialMetersOnRoute(accData?.residentialWays || [], route.coords);
+  const serviceMeters = serviceMetersOnRoute(accData?.serviceWays || [], route.coords);
+  const pedestrianMeters = pedestrianMetersOnRoute(accData?.pedestrianFriendlyWays || [], route.coords);
+  const parkMeters = parkAdjacentMetersOnRoute(accData?.greenSpaceWays || [], route.coords);
+
+  // Shop density per 100 m of walking. A high-street stretch in Belfast tends
+  // to have ~5–15 shops per 100 m; a residential estate is usually 0.
+  const distanceForDensity = Math.max(route.distance, 50);
+  const shopDensityPer100m = (shopCount / distanceForDensity) * 100;
+
   const blocked = forbiddenMeters > Math.max(FORBIDDEN_BLOCK_METERS, route.distance * FORBIDDEN_BLOCK_RATIO);
 
   const summary = {
@@ -808,6 +842,12 @@ export function analyzeRoute(route, accData) {
     gentleMeters,
     crashRiskMeters,
     crashRiskUnits: crashSummary.crashRiskUnits + (crashRiskMeters / 75),
+    shopCount,
+    shopDensityPer100m,
+    residentialMeters,
+    serviceMeters,
+    pedestrianMeters,
+    parkMeters,
     decisionPoints: complexityFromRoute.decisionPoints,
     complexDecisionPoints: complexityFromRoute.complexDecisionPoints,
     decisionWeight: complexityFromRoute.decisionWeight,
@@ -839,6 +879,12 @@ export function analyzeRoute(route, accData) {
     steepMeters,
     gentleMeters,
     crashRiskMeters,
+    shopCount,
+    shopDensityPer100m,
+    residentialMeters,
+    serviceMeters,
+    pedestrianMeters,
+    parkMeters,
     decisionPoints: complexityFromRoute.decisionPoints,
     complexDecisionPoints: complexityFromRoute.complexDecisionPoints,
     decisionWeight: complexityFromRoute.decisionWeight,
@@ -912,6 +958,35 @@ export function scoreRouteAnalysis(analysis, weights) {
   penalty += analysis.crashRiskUnits * PENALTIES.crash_risk_unit * (weights.avoid_crash || 0);
   penalty += analysis.decisionWeight * PENALTIES.decision_point_penalty * (weights.simple_navigation || 0);
   penalty += analysis.complexDecisionPoints * PENALTIES.complex_junction_penalty * (weights.simple_navigation || 0);
+
+  // Shopping-streets bias: reward routes that stick to streets with retail
+  // frontage rather than dipping through housing estates or service alleys.
+  // Shop density gives the lion's share of the bonus; residential/service
+  // mileage gets a per-meter penalty so the optimiser actively detours
+  // around quiet estates when a parallel high-street option exists.
+  const shopWeight = weights.prefer_shopping || 0;
+  if (shopWeight > 0) {
+    // Cap the density bonus so a single dense block doesn't dominate the score.
+    const cappedDensity = Math.min(analysis.shopDensityPer100m || 0, 8);
+    penalty -= cappedDensity * PENALTIES.shop_density_bonus * shopWeight;
+    penalty += (analysis.residentialMeters || 0) * PENALTIES.residential_per_meter * shopWeight;
+    penalty += (analysis.serviceMeters || 0) * PENALTIES.service_per_meter * shopWeight;
+    penalty -= (analysis.pedestrianMeters || 0) * PENALTIES.pedestrian_per_meter_bonus * shopWeight;
+  }
+
+  // Pleasant-walk bias: prefer pedestrianised streets and park edges, and
+  // soften (not block) routes through quiet residential estates.
+  const pleasantWeight = weights.prefer_pleasant || 0;
+  if (pleasantWeight > 0) {
+    penalty -= (analysis.pedestrianMeters || 0) * PENALTIES.pedestrian_per_meter_bonus * pleasantWeight;
+    penalty -= (analysis.parkMeters || 0) * PENALTIES.park_per_meter_bonus * pleasantWeight;
+    // Pleasantness still slightly disfavours service alleys.
+    penalty += (analysis.serviceMeters || 0) * PENALTIES.service_per_meter * (pleasantWeight * 0.6);
+    // A modest density bonus too — a leafy park edge is great, but a
+    // pleasant village street with a few cafes is also lovely.
+    const cappedDensity = Math.min(analysis.shopDensityPer100m || 0, 5);
+    penalty -= cappedDensity * PENALTIES.shop_density_bonus * (pleasantWeight * 0.5);
+  }
 
   return {
     ...analysis,

@@ -16,7 +16,9 @@ const WEIGHT_KEYS = [
   'rest_points',
   'station_access',
   'verified_reports',
-  'avoid_crash'
+  'avoid_crash',
+  'prefer_shopping',
+  'prefer_pleasant'
 ];
 
 function buildModeWeights(mode, preferences) {

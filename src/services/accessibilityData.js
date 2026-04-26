@@ -248,16 +248,24 @@ export async function fetchAccessibilityData(bbox) {
       node["railway"="station"](${s},${w},${n},${e});
       node["public_transport"="station"](${s},${w},${n},${e});
       node["amenity"="bus_station"](${s},${w},${n},${e});
+      node["shop"](${s},${w},${n},${e});
+      node["amenity"~"^(cafe|restaurant|pub|bar|fast_food|bakery|pharmacy|bank|post_office|cinema|theatre|marketplace|ice_cream)$"](${s},${w},${n},${e});
       way["highway"~"^(primary|secondary|trunk|primary_link|secondary_link|trunk_link)$"](${s},${w},${n},${e});
       way["highway"~"^(motorway|motorway_link)$"](${s},${w},${n},${e});
       way["foot"~"^(no|private)$"](${s},${w},${n},${e});
       way["access"~"^(no|private)$"]["foot"!~"^(yes|designated|permissive)$"](${s},${w},${n},${e});
       way["highway"="steps"](${s},${w},${n},${e});
+      way["highway"="residential"](${s},${w},${n},${e});
+      way["highway"="service"](${s},${w},${n},${e});
+      way["highway"~"^(pedestrian|living_street)$"](${s},${w},${n},${e});
       way["highway"~"^(footway|path|pedestrian|sidewalk|residential|service|living_street)$"]["lit"~"^(no|yes)$"](${s},${w},${n},${e});
       way["highway"~"^(footway|path|pedestrian|sidewalk)$"]["width"](${s},${w},${n},${e});
       way["highway"~"^(footway|path|pedestrian|sidewalk|living_street|residential|service)$"]["surface"](${s},${w},${n},${e});
       way["highway"~"^(footway|path|pedestrian|sidewalk|living_street|residential|service)$"]["smoothness"](${s},${w},${n},${e});
       way["highway"~"^(footway|path|pedestrian|sidewalk|living_street|residential|service)$"]["incline"](${s},${w},${n},${e});
+      way["leisure"~"^(park|garden|nature_reserve|common|recreation_ground)$"](${s},${w},${n},${e});
+      way["landuse"~"^(forest|grass|recreation_ground|village_green|meadow)$"](${s},${w},${n},${e});
+      way["natural"~"^(wood|water|heath|grassland)$"](${s},${w},${n},${e});
     );
     out body geom;
   `;
@@ -314,6 +322,20 @@ export async function fetchAccessibilityData(bbox) {
   const stations = [];
   const roughWays = [];
   const steepWays = [];
+  const shopPois = [];
+  const residentialWays = [];
+  const serviceWays = [];
+  const pedestrianFriendlyWays = [];
+  const greenSpaceWays = [];
+
+  const SHOP_AMENITIES = new Set([
+    'cafe', 'restaurant', 'pub', 'bar', 'fast_food', 'bakery',
+    'pharmacy', 'bank', 'post_office', 'cinema', 'theatre',
+    'marketplace', 'ice_cream'
+  ]);
+  const GREEN_LEISURE = new Set(['park', 'garden', 'nature_reserve', 'common', 'recreation_ground']);
+  const GREEN_LANDUSE = new Set(['forest', 'grass', 'recreation_ground', 'village_green', 'meadow']);
+  const GREEN_NATURAL = new Set(['wood', 'water', 'heath', 'grassland']);
   for (const el of data.elements || []) {
     if (el.type === 'node') {
       const t = el.tags || {};
@@ -321,6 +343,7 @@ export async function fetchAccessibilityData(bbox) {
       else if (t.amenity === 'toilets') toilets.push(el);
       else if (t.amenity === 'bench') seating.push(el);
       else if (isStationNode(t)) stations.push(el);
+      else if (t.shop || (t.amenity && SHOP_AMENITIES.has(t.amenity))) shopPois.push(el);
       else nodes.push(el);
     } else if (el.type === 'way' && el.geometry) {
       const t = el.tags || {};
@@ -345,6 +368,23 @@ export async function fetchAccessibilityData(bbox) {
       }
       if (isRoughWay(t)) roughWays.push(el);
       if (isSteepWay(t)) steepWays.push(el);
+
+      if (t.highway === 'residential') residentialWays.push(el);
+      // Service ways are usually driveways/parking aisles/alleys — treat as
+      // estate-like / undesirable for shopping pleasantness unless explicitly
+      // tagged as a footway-friendly alley.
+      if (t.highway === 'service') serviceWays.push(el);
+      if (t.highway === 'pedestrian' || t.highway === 'living_street') {
+        pedestrianFriendlyWays.push(el);
+      }
+
+      if (
+        (t.leisure && GREEN_LEISURE.has(t.leisure)) ||
+        (t.landuse && GREEN_LANDUSE.has(t.landuse)) ||
+        (t.natural && GREEN_NATURAL.has(t.natural))
+      ) {
+        greenSpaceWays.push(el);
+      }
     }
   }
   crashRiskWays.push(...deriveCrashRiskWays(busyWays, source));
@@ -367,6 +407,11 @@ export async function fetchAccessibilityData(bbox) {
       communityReports: [],
       roughWays,
       steepWays,
+      shopPois,
+      residentialWays,
+      serviceWays,
+      pedestrianFriendlyWays,
+      greenSpaceWays,
       source
     },
     bbox

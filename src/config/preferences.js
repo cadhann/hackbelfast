@@ -25,7 +25,13 @@ export const PENALTIES = {
   report_issue_unit: 180,
   report_clear_bonus: 90,
   decision_point_penalty: 40,
-  complex_junction_penalty: 120
+  complex_junction_penalty: 120,
+  // Shopping-streets vs housing-estates bias.
+  residential_per_meter: 1.5,
+  service_per_meter: 3,
+  pedestrian_per_meter_bonus: 2,
+  shop_density_bonus: 80,
+  park_per_meter_bonus: 2
 };
 
 export const FILTERS = [
@@ -98,5 +104,15 @@ export const FILTERS = [
     id: 'avoid_crash',
     title: 'Avoid collision-prone areas',
     desc: 'Penalise known crash-risk hotspots and difficult junctions where collisions are more common.'
+  },
+  {
+    id: 'prefer_shopping',
+    title: 'Streets with shops & cafes',
+    desc: 'Prefer high-street stretches with shops, cafes and pedestrianised areas over housing estates or service alleys.'
+  },
+  {
+    id: 'prefer_pleasant',
+    title: 'Pleasant walks (parks & pedestrian zones)',
+    desc: 'Reward routes along park edges, pedestrian streets and lively areas, even when slightly longer.'
   }
 ];
