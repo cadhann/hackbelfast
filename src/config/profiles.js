@@ -74,15 +74,20 @@ export const PROFILES = [
     id: 'pram',
     label: 'With pram',
     icon: '👶',
-    description: 'No steps, low kerbs, wider footways, smoother surfaces.',
+    description: 'No steps, low kerbs, wider footways, smoother surfaces, gentler slopes, quieter streets.',
     paceId: 'pram',
     customPaceMps: null,
     modeId: 'balanced',
     filters: withFilters({
+      // Step heights and kerb heights matter for pushing a pram up/down
       kerb: true,
       avoid_steps: true,
+      // Footway width matters too — narrow pavements force into traffic
       pavement_width: true,
-      surface_quality: true
+      surface_quality: true,
+      gentle_slope: true,
+      avoid_busy: true,
+      rest_points: true
     })
   },
   {

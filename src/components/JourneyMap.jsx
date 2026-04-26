@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Polyline, CircleMarker, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { BELFAST, BELFAST_BOUNDS } from '../config/map';
@@ -172,12 +172,25 @@ function SupportMarker({ feature, kind }) {
   );
 }
 
-export default function JourneyMap({ hint, loading, start, end, scored, chosen, chosenIndex, onMapClick, userPosition, followUser }) {
+export default function JourneyMap({ hint, loading, start, end, scored, chosen, chosenIndex, visibleIndices, onMapClick, userPosition, followUser }) {
   const supportMarkers = useMemo(() => buildSupportMarkers(chosen), [chosen]);
+  const [showIcons, setShowIcons] = useState(true);
   return (
     <div className="map-area">
       {hint && <div className="map-hint">{hint}</div>}
       {loading && <div className="loading">Loading…</div>}
+      <div className="map-controls">
+        <button
+          type="button"
+          className={`map-icons-toggle${showIcons ? '' : ' off'}`}
+          onClick={() => setShowIcons(v => !v)}
+          aria-pressed={showIcons}
+          title={showIcons ? 'Hide map icons' : 'Show map icons'}
+        >
+          <span aria-hidden="true">{showIcons ? '👁' : '🚫'}</span>
+          <span className="map-icons-toggle-label">{showIcons ? 'Icons' : 'Icons off'}</span>
+        </button>
+      </div>
       <MapContainer
         center={BELFAST}
         zoom={14}
@@ -198,13 +211,19 @@ export default function JourneyMap({ hint, loading, start, end, scored, chosen, 
         <MapSizeFix />
         <MapFollower position={userPosition} follow={followUser} />
         <ClickHandler onClick={onMapClick} />
-        {scored.map((s, i) => i !== chosenIndex && (
-          <Polyline
-            key={`alt-${i}`}
-            positions={s.route.coords}
-            pathOptions={{ color: '#9aa5b1', weight: 4, opacity: 0.55, dashArray: '6 6' }}
-          />
-        ))}
+        {scored.map((s, i) => {
+          if (i === chosenIndex) return null;
+          // Only render alternatives the user can actually pick from the
+          // option list — keeps the map free of overlapping dashed lines.
+          if (visibleIndices && !visibleIndices.has(i)) return null;
+          return (
+            <Polyline
+              key={`alt-${i}`}
+              positions={s.route.coords}
+              pathOptions={{ color: '#9aa5b1', weight: 4, opacity: 0.55, dashArray: '6 6' }}
+            />
+          );
+        })}
         {chosen && (
           <>
             <Polyline
@@ -217,8 +236,8 @@ export default function JourneyMap({ hint, loading, start, end, scored, chosen, 
             />
           </>
         )}
-        {chosen && chosen.near.map(el => <FeatureMarker key={el.id} el={el} />)}
-        {supportMarkers.map(item => (
+        {showIcons && chosen && chosen.near.map(el => <FeatureMarker key={el.id} el={el} />)}
+        {showIcons && supportMarkers.map(item => (
           <SupportMarker key={`${item.kind}-${item.feature.id}`} feature={item} kind={item.kind} />
         ))}
         {/* Live GPS position — outer ring + inner dot */}

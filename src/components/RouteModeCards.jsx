@@ -33,8 +33,39 @@ export default function RouteModeCards({
     modePicksByIndex.get(mode.routeIndex).push(mode);
   }
 
-  const visible = candidates.map((c, i) => ({ c, i })).filter(({ c }) => !c.blocked);
-  if (visible.length === 0) return null;
+  const allUsable = candidates.map((c, i) => ({ c, i })).filter(({ c }) => !c.blocked);
+  if (allUsable.length === 0) return null;
+
+  // Show only routes that are actually walkable right now — no closed gates.
+  // Cap at two: the picked option plus at most one alternative.
+  const working = allUsable.filter(({ c }) => (c.blockingClosures?.length || 0) === 0);
+  let visible;
+  let allHaveClosures = false;
+  if (working.length > 0) {
+    // Pick which routes to show (cap at 2: selected/recommended + one alt)
+    // but render them in their ORIGINAL candidate order so cards don't
+    // shuffle as the user clicks.
+    const pickedSet = new Set();
+    if (selectedIndex >= 0 && working.some(({ i }) => i === selectedIndex)) {
+      pickedSet.add(selectedIndex);
+    }
+    if (pickedSet.size < 2 && recommendedIndex >= 0 && working.some(({ i }) => i === recommendedIndex)) {
+      pickedSet.add(recommendedIndex);
+    }
+    for (const { i } of working) {
+      if (pickedSet.size >= 2) break;
+      pickedSet.add(i);
+    }
+    visible = working.filter(({ i }) => pickedSet.has(i)); // already in candidate order
+  } else {
+    // Nothing fully open — fall back to the single best candidate so the
+    // user always sees a solution. Suppress the closure pill in that case.
+    allHaveClosures = true;
+    const fallback = allUsable.find(({ i }) => i === selectedIndex)
+      || allUsable.find(({ i }) => i === recommendedIndex)
+      || allUsable[0];
+    visible = [fallback];
+  }
 
   return (
     <div className="mode-section">
@@ -87,7 +118,7 @@ export default function RouteModeCards({
                 {isRecommended && !c.blocked && <span className="route-pill recommended">Best match</span>}
                 {isSelected    && !c.blocked && <span className="route-pill selected">Selected</span>}
                 {c.blocked                   && <span className="route-pill warn">Restricted</span>}
-                {!c.blocked && c.blockingClosures?.length > 0 && (
+                {!c.blocked && !allHaveClosures && c.blockingClosures?.length > 0 && (
                   <span
                     className="route-pill warn"
                     title={c.blockingClosures.map(t => `${t.place.name} (${t.hoursLabel || 'closed'})`).join('\n')}

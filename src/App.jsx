@@ -644,16 +644,50 @@ export default function App() {
 
   const recommendedIndex = recommendedMode?.routeIndex ?? -1;
 
+  // Prefer a working route — never default to one that hits a closed gate
+  // when a viable alternative exists.
+  const isWorking = (c) => c && !c.blocked && (c.blockingClosures?.length || 0) === 0;
   const chosenIndex = useMemo(() => {
     if (candidates.length === 0) return -1;
     if (selectedRouteIndex !== null && selectedRouteIndex >= 0 && selectedRouteIndex < candidates.length) {
       return selectedRouteIndex;
     }
+    // Recommended pick first, but only if it's actually walkable right now.
+    if (recommendedIndex >= 0 && isWorking(candidates[recommendedIndex])) {
+      return recommendedIndex;
+    }
+    // Otherwise prefer the first working candidate.
+    const workingIdx = candidates.findIndex(isWorking);
+    if (workingIdx >= 0) return workingIdx;
+    // Fallback: original recommendation, even if gated.
     return recommendedIndex >= 0 ? recommendedIndex : 0;
   }, [candidates, selectedRouteIndex, recommendedIndex]);
 
   const chosen = chosenIndex >= 0 ? candidates[chosenIndex] : null;
   const selectedMode = recommendedMode;
+
+  // Indices of candidates that are actually visible as picker cards.
+  // Used to draw only those alternatives on the map (avoids overlap clutter).
+  const visibleCandidateIndices = useMemo(() => {
+    if (candidates.length === 0) return new Set();
+    const usable = candidates
+      .map((c, i) => ({ c, i }))
+      .filter(({ c }) => !c.blocked);
+    const working = usable.filter(({ c }) => (c.blockingClosures?.length || 0) === 0);
+    if (working.length === 0) {
+      return new Set([chosenIndex >= 0 ? chosenIndex : 0]);
+    }
+    const picked = new Set();
+    if (chosenIndex >= 0 && working.some(({ i }) => i === chosenIndex)) picked.add(chosenIndex);
+    if (picked.size < 2 && recommendedIndex >= 0 && working.some(({ i }) => i === recommendedIndex)) {
+      picked.add(recommendedIndex);
+    }
+    for (const { i } of working) {
+      if (picked.size >= 2) break;
+      picked.add(i);
+    }
+    return picked;
+  }, [candidates, chosenIndex, recommendedIndex]);
 
   // Keep chosenRef in sync so the simulation interval never closes over stale chosen
   useEffect(() => { chosenRef.current = chosen ?? null; });
@@ -760,6 +794,7 @@ export default function App() {
         scored={routeAnalyses}
         chosen={chosen}
         chosenIndex={chosenIndex}
+        visibleIndices={visibleCandidateIndices}
         onMapClick={navActive ? undefined : handleMapClick}
         userPosition={effectivePosition}
         followUser={navActive}
