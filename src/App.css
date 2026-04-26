@@ -1492,11 +1492,10 @@ html, body, #root {
 .fab-report { color: var(--gm-yellow); }
 .fab-report:hover { background: #fff8e1; }
 
-/* Standalone report symbol — bottom-left on mobile to avoid the FAB stack
-   on the right; bumped up to a more prominent amber pill. */
+/* Standalone report symbol — bottom-right */
 .report-corner {
   position: fixed;
-  left: 14px;
+  right: 14px;
   bottom: calc(var(--peek-height, 96px) + 16px);
   transition: bottom 0.28s cubic-bezier(0.2, 0, 0, 1);
   min-width: 52px;
@@ -1535,7 +1534,7 @@ html, body, #root {
 
 @media (min-width: 768px) {
   .report-corner {
-    left: 24px;
+    right: 24px;
     bottom: 24px;
   }
   .app.sheet-open .report-corner {
