@@ -6,6 +6,7 @@ import MapLegend from './components/MapLegend';
 import NavigationHud from './components/NavigationHud';
 import PaceSelector from './components/PaceSelector';
 import PreferenceList from './components/PreferenceList';
+import ReportDialog from './components/ReportDialog';
 import RouteDetails from './components/RouteDetails';
 import RouteModeCards from './components/RouteModeCards';
 import { useGpsTracking } from './hooks/useGpsTracking';
@@ -89,6 +90,7 @@ export default function App() {
     avoid_crash: false
   });
   const [sidebarOpen, setSidebarOpen] = useState(!isMobileViewport());
+  const [reportOpen, setReportOpen] = useState(false);
 
   // ── Navigation state ──────────────────────────────────────────────────────
   const [navActive, setNavActive]     = useState(false);
@@ -822,6 +824,16 @@ export default function App() {
       </div>
 
       <div className="fab-stack">
+        {/* Report an issue */}
+        <button
+          type="button"
+          className="fab fab-report"
+          onClick={() => setReportOpen(true)}
+          aria-label="Report an issue"
+          title="Report an issue"
+        >
+          <span aria-hidden="true">⚠</span>
+        </button>
         {/* Recalculate — refetch routes ignoring cache */}
         {start && end && !navActive && (
           <button
@@ -903,6 +915,8 @@ export default function App() {
           Fastest = shortest walk with light preference nudges. Balanced applies lighter accessibility weighting. Beacon Accessible uses the full preference set. Crossing data comes from OSM tags within 30 m of the route. The wider score model can also use nearby steps, pavement width, lighting, surface, gradient, support places, station access, crash hotspots, and seeded community reports where known. Unknown data stays unknown rather than being treated as missing.
         </p>
       </BottomSheet>
+
+      <ReportDialog open={reportOpen} onClose={() => setReportOpen(false)} />
     </div>
   );
 }

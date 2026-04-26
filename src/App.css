@@ -1428,6 +1428,169 @@ html, body, #root {
 .nav-hud--a11y .nav-hud-dist   { font-size: 18px; }
 .nav-hud--a11y .nav-hud-arrow  { font-size: 54px; width: 66px; }
 
+/* ── Report dialog ── */
+.fab-report { color: var(--gm-yellow); }
+.fab-report:hover { background: #fff8e1; }
+
+.report-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(32,33,36,0.55);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: report-fade 160ms ease-out;
+}
+@keyframes report-fade { from { opacity: 0; } to { opacity: 1; } }
+
+.report-card {
+  width: 100%;
+  max-width: 460px;
+  background: var(--gm-bg);
+  border-radius: 18px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.25);
+  padding: 20px;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  animation: report-pop 200ms cubic-bezier(0.2,0.8,0.2,1);
+}
+@keyframes report-pop {
+  from { transform: translateY(8px) scale(0.98); opacity: 0; }
+  to   { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+.report-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.report-title { font-size: 18px; margin: 0; font-weight: 600; }
+.report-close {
+  background: transparent;
+  border: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 16px;
+  color: var(--gm-text-muted);
+}
+.report-close:hover { background: var(--gm-surface); color: var(--gm-text); }
+.report-sub {
+  margin: 6px 0 14px;
+  color: var(--gm-text-muted);
+  font-size: 13px;
+}
+
+.report-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.report-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--gm-bg);
+  border: 1px solid var(--gm-border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: background 120ms, border-color 120ms;
+}
+.report-option:hover { border-color: #b8bdc4; background: var(--gm-surface); }
+.report-option.active {
+  border-color: var(--gm-blue);
+  background: #e8f0fe;
+}
+.report-option-icon { font-size: 18px; flex-shrink: 0; }
+.report-option-label { font-size: 13px; color: var(--gm-text); }
+.report-option.active .report-option-label { color: var(--gm-blue); font-weight: 500; }
+
+.report-note-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--gm-text-muted);
+  margin-bottom: 12px;
+}
+.report-note {
+  width: 100%;
+  border: 1px solid var(--gm-border);
+  border-radius: 10px;
+  padding: 10px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--gm-text);
+  resize: vertical;
+  min-height: 64px;
+  outline: none;
+  background: var(--gm-bg);
+}
+.report-note:focus { border-color: var(--gm-blue); }
+
+.report-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.report-btn {
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 18px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.report-btn-ghost {
+  background: transparent;
+  color: var(--gm-text-muted);
+}
+.report-btn-ghost:hover { background: var(--gm-surface); color: var(--gm-text); }
+.report-btn-primary {
+  background: var(--gm-blue);
+  color: white;
+}
+.report-btn-primary:hover { background: var(--gm-blue-dark); }
+.report-btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+.report-foot {
+  margin: 10px 0 0;
+  font-size: 11px;
+  color: var(--gm-text-muted);
+  text-align: center;
+}
+
+.report-thanks {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 24px 12px;
+  text-align: center;
+}
+.report-thanks-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--gm-green);
+  color: white;
+  font-size: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 6px;
+}
+.report-thanks-title { font-size: 17px; font-weight: 600; color: var(--gm-text); }
+.report-thanks-sub   { font-size: 13px; color: var(--gm-text-muted); }
+
 /* ── Pace selector ── */
 .pace-section {
   display: flex;
