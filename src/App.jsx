@@ -4,6 +4,7 @@ import DirectionsBar from './components/DirectionsBar';
 import JourneyMap from './components/JourneyMap';
 import MapLegend from './components/MapLegend';
 import NavigationHud from './components/NavigationHud';
+import PaceSelector from './components/PaceSelector';
 import PreferenceList from './components/PreferenceList';
 import RouteDetails from './components/RouteDetails';
 import RouteModeCards from './components/RouteModeCards';
@@ -13,6 +14,7 @@ import { DEFAULT_VOICE_ID } from './services/elevenlabs';
 import { formatDistance, formatDuration } from './utils/format';
 import { FILTERS } from './config/preferences';
 import { DEFAULT_ROUTE_MODE_ID } from './config/routeModes';
+import { DEFAULT_PACE_ID, adjustedDurationSeconds, clampCustomMps, resolvePaceMps } from './config/walkingPace';
 import { getDemoAccessibilityData } from './data/belfastDemoSeed';
 import { fetchAccessibilityData } from './services/accessibilityData';
 import { coordinateLabel, reverseGeocodePoint, searchPlaces } from './services/geocoding';
@@ -101,6 +103,24 @@ export default function App() {
   const [voiceId, setVoiceId] = useState(
     () => localStorage.getItem('elevenlabs_voice_id') || DEFAULT_VOICE_ID
   );
+  const [paceId, setPaceId] = useState(
+    () => localStorage.getItem('safestep_pace_id') || DEFAULT_PACE_ID
+  );
+  const [customPaceMps, setCustomPaceMps] = useState(() => {
+    const stored = Number(localStorage.getItem('safestep_pace_custom_mps'));
+    return Number.isFinite(stored) && stored > 0 ? stored : null;
+  });
+
+  const handlePaceIdChange = useCallback((id) => {
+    setPaceId(id);
+    localStorage.setItem('safestep_pace_id', id);
+  }, []);
+  const handleCustomPaceChange = useCallback((mps) => {
+    const clamped = mps == null ? null : clampCustomMps(mps);
+    setCustomPaceMps(clamped);
+    if (clamped == null) localStorage.removeItem('safestep_pace_custom_mps');
+    else localStorage.setItem('safestep_pace_custom_mps', String(clamped));
+  }, []);
 
   // Simulation bookkeeping — use refs so the interval never closes over stale state
   const simIntervalRef  = useRef(null);
@@ -545,10 +565,32 @@ export default function App() {
       || null;
   }, [routeModes, selectedModeId]);
 
+  const paceMps = useMemo(() => resolvePaceMps(paceId, customPaceMps), [paceId, customPaceMps]);
+
   const candidates = useMemo(() => {
     if (!recommendedMode || routeAnalyses.length === 0) return [];
-    return routeAnalyses.map(a => scoreRouteAnalysis(a, recommendedMode.weights));
-  }, [routeAnalyses, recommendedMode]);
+    return routeAnalyses.map(a => {
+      const scored = scoreRouteAnalysis(a, recommendedMode.weights);
+      // Count signalised crossings the route passes near, plus turn maneuvers
+      const signalCount =
+        (a.signals?.audioYes || 0) +
+        (a.signals?.audioNo || 0) +
+        (a.signals?.audioUnknown || 0);
+      const steps = scored.route?.steps || [];
+      const turnCount = steps.filter(s => {
+        if (!s) return false;
+        if (s.instruction === 'depart' || s.instruction === 'arrive') return false;
+        return !!s.modifier || s.instruction === 'turn' || s.instruction === 'roundabout' || s.instruction === 'rotary';
+      }).length;
+      const adjusted = adjustedDurationSeconds(scored.route, paceMps, { signalCount, turnCount });
+      return {
+        ...scored,
+        signalCount,
+        turnCount,
+        route: { ...scored.route, duration: adjusted, durationOsrm: scored.route?.duration }
+      };
+    });
+  }, [routeAnalyses, recommendedMode, paceMps]);
 
   const recommendedIndex = recommendedMode?.routeIndex ?? -1;
 
@@ -840,6 +882,12 @@ export default function App() {
           activeModeId={selectedMode?.id || selectedModeId}
           onSelectRoute={setSelectedRouteIndex}
           onSelectMode={(id) => { setSelectedModeId(id); setSelectedRouteIndex(null); }}
+        />
+        <PaceSelector
+          paceId={paceId}
+          customMps={customPaceMps}
+          onChangePaceId={handlePaceIdChange}
+          onChangeCustomMps={handleCustomPaceChange}
         />
         <PreferenceList
           filters={filters}
