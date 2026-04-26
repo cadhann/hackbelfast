@@ -10,6 +10,7 @@ export const ROUTE_MODES = [
       surface_quality: 0, gentle_slope: 0, simple_navigation: 0,
       rest_points: 0, station_access: 0, verified_reports: 0, avoid_crash: 0,
       prefer_shopping: 0, prefer_pleasant: 0,
+      shopFrontBias: 0.1,
       forbidden: 0
     },
     preferenceBoosts: {
@@ -34,6 +35,7 @@ export const ROUTE_MODES = [
       // Mild background bias toward high-street stretches even without an
       // explicit preference — keeps walkers off random estate cut-throughs.
       prefer_shopping: 0.15, prefer_pleasant: 0.1,
+      shopFrontBias: 0.2,
       forbidden: 0.6
     },
     preferenceBoosts: {
@@ -56,6 +58,7 @@ export const ROUTE_MODES = [
       surface_quality: 0.6, gentle_slope: 0.6, simple_navigation: 0.55,
       rest_points: 0.45, station_access: 0.5, verified_reports: 0.55, avoid_crash: 0.65,
       prefer_shopping: 0.2, prefer_pleasant: 0.15,
+      shopFrontBias: 0.3,
       forbidden: 1.1
     },
     preferenceBoosts: {

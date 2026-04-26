@@ -200,6 +200,45 @@ function stepsMetersOnRoute(stepsWays, coords, threshold = 10) {
   return metersOnRouteAlongWays(stepsWays, coords, threshold);
 }
 
+// Returns nodes that sit within `threshold` metres of the route polyline.
+// Used with a tight threshold so hazard markers appear only on the path itself.
+function nodesOnRoute(nodes, coords, threshold = 8) {
+  return pointsNearRoute(nodes, coords, threshold).map(entry => entry.item);
+}
+
+// Returns one representative {lat, lon, id} per steps way that the route
+// actually traverses. Uses the same midpoint-of-route-segment approach as
+// metersOnRouteAlongWays so only segments whose midpoint sits within
+// threshold metres of the steps geometry are matched — adjacent staircases
+// on parallel streets are excluded.
+function stepsEntryPointsNearRoute(stepsWays, coords, threshold = 5) {
+  if (!stepsWays || stepsWays.length === 0 || coords.length < 2) return [];
+  const routeBbox = routeBoundingBox(coords);
+  const padDeg = (threshold + 5) / 111320;
+  const result = [];
+  for (const way of stepsWays) {
+    const geometry = getWayGeometry(way);
+    if (!geometry || geometry.length === 0) continue;
+    const bbox = way._bbox || (way._bbox = wayBoundingBox({ geometry }));
+    if (!bboxesOverlap(routeBbox, bbox, padDeg)) continue;
+    // Walk route segments; emit a marker at the first midpoint that lands on
+    // this steps way, then stop (one marker per steps section).
+    for (let i = 0; i < coords.length - 1; i++) {
+      const mid = [(coords[i][0] + coords[i + 1][0]) / 2, (coords[i][1] + coords[i + 1][1]) / 2];
+      for (let j = 0; j < geometry.length - 1; j++) {
+        const segA = [geometry[j].lat, geometry[j].lon];
+        const segB = [geometry[j + 1].lat, geometry[j + 1].lon];
+        if (pointToSegmentMeters(mid, segA, segB) < threshold) {
+          result.push({ lat: mid[0], lon: mid[1], id: way.id });
+          break;
+        }
+      }
+      if (result.length > 0 && result[result.length - 1].id === way.id) break;
+    }
+  }
+  return result;
+}
+
 function narrowMetersOnRoute(narrowWays, coords, threshold = 8) {
   return metersOnRouteAlongWays(narrowWays, coords, threshold);
 }
@@ -710,6 +749,10 @@ function summarizeEvidence(signals, summary) {
 }
 
 function computeIntrinsicScore(signals, summary) {
+  // Street lamps are abundant in any city — cap their contribution so they
+  // don't drown out actual accessibility signals in urban environments.
+  const lampContrib = Math.min(summary.streetLampCount * 0.18, 2.0);
+
   const supportive =
     signals.tactileYes +
     signals.audioYes +
@@ -718,25 +761,25 @@ function computeIntrinsicScore(signals, summary) {
     summary.toiletCount * 0.15 +
     summary.seatingCount * 0.35 +
     summary.accessibleStationCount * 0.9 +
-    summary.smoothMeters / 170 +
-    summary.gentleMeters / 160 +
-    summary.litMeters / 260 +
-    summary.streetLampCount * 0.18 +
+    summary.smoothMeters / 150 +
+    summary.gentleMeters / 140 +
+    summary.litMeters / 220 +
+    lampContrib +
     summary.reportClearUnits;
 
   const difficult =
-    signals.tactileNo * 1.1 +
-    signals.audioNo +
-    signals.kerbHigh * 1.2 +
-    summary.busyMeters / 180 +
+    signals.tactileNo * 1.2 +
+    signals.audioNo * 1.1 +
+    signals.kerbHigh * 1.6 +
+    summary.busyMeters / 120 +
     summary.forbiddenMeters / 70 +
-    summary.stepsMeters / 50 +
-    summary.narrowMeters / 90 +
-    summary.unlitMeters / 240 +
+    summary.stepsMeters / 35 +
+    summary.narrowMeters / 70 +
+    summary.unlitMeters / 160 +
     summary.inaccessibleStationCount * 1.2 +
-    summary.roughMeters / 90 +
-    summary.steepMeters / 70 +
-    summary.crashRiskMeters / 120 +
+    summary.roughMeters / 65 +
+    summary.steepMeters / 50 +
+    summary.crashRiskMeters / 100 +
     summary.crashRiskUnits * 0.95 +
     summary.reportIssueUnits * 1.15 +
     summary.decisionWeight * 0.25 +
@@ -746,8 +789,13 @@ function computeIntrinsicScore(signals, summary) {
   if (total <= 0) return { intrinsicScore: null, supportiveEvidence: 0, difficultEvidence: 0, evidenceTotal: 0 };
 
   const raw = (supportive - difficult) / total;
-  const confidence = clamp(total / 8, 0.25, 1);
-  const intrinsicScore = clamp(0.5 + raw * 0.5 * confidence, 0, 1);
+  // No confidence floor: sparse routes return null rather than a spuriously
+  // mid-range score. Full confidence reached at total = 6.
+  const confidence = clamp(total / 6, 0, 1);
+  // ×0.45 spread: realistic good routes reach ~70–80, bad routes reach ~25–35.
+  // Using 0.65 let pure-urban routes (abundant lamps, smooth surfaces, no steps)
+  // saturate at 100 — 0.45 keeps headroom for differentiation.
+  const intrinsicScore = confidence < 0.15 ? null : clamp(0.5 + raw * 0.45 * confidence, 0, 1);
 
   return {
     intrinsicScore,
@@ -762,9 +810,18 @@ export function analyzeRoute(route, accData) {
   const near = nodesNearRoute(nodes, route.coords);
   const signals = collectRouteSignals(near);
 
+  // Tight-threshold sets for on-route hazard map markers (8 m vs 30 m for near)
+  const onRouteNodes = nodesOnRoute(nodes, route.coords);
+  const crossingsOnRoute = onRouteNodes.filter(el => (el.tags || {}).highway === 'crossing');
+  const kerbsOnRoute = onRouteNodes.filter(el => {
+    const tags = el.tags || {};
+    return tags.kerb === 'raised' && tags.highway !== 'crossing';
+  });
+
   const busyMeters = busyMetersOnRoute(accData?.busyWays || [], route.coords);
   const forbiddenMeters = forbiddenMetersOnRoute(accData?.forbiddenWays || [], route.coords);
   const stepsMeters = stepsMetersOnRoute(accData?.stepsWays || [], route.coords);
+  const stepsNear = stepsEntryPointsNearRoute(accData?.stepsWays || [], route.coords);
   const narrowMeters = narrowMetersOnRoute(accData?.narrowWays || [], route.coords);
   const litMeters = litMetersOnRoute(accData?.litWays || [], route.coords);
   const unlitMeters = unlitMetersOnRoute(accData?.unlitWays || [], route.coords);
@@ -866,6 +923,9 @@ export function analyzeRoute(route, accData) {
   return {
     route,
     near,
+    stepsNear,
+    crossingsOnRoute,
+    kerbsOnRoute,
     signals,
     busyMeters,
     forbiddenMeters,

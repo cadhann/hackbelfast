@@ -49,7 +49,6 @@ export default function NavigationHud({
   arrived,
   simulating,
   gpsError,
-  accessible,
   apiKey,
   voiceId,
   onEnd,
@@ -75,8 +74,7 @@ export default function NavigationHud({
     <div
       className={[
         'nav-hud',
-        arrived    ? 'nav-hud--arrived' : '',
-        accessible ? 'nav-hud--a11y'   : '',
+        arrived ? 'nav-hud--arrived' : '',
         `nav-hud--${urgency}`,
       ].filter(Boolean).join(' ')}
       role="region"

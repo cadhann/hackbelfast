@@ -129,7 +129,6 @@ export default function App() {
   const [navActive, setNavActive]     = useState(false);
   const [simulating, setSimulating]   = useState(false);
   const [simPosition, setSimPosition] = useState(null);
-  const [accessibleMode, setAccessibleMode] = useState(false);
   const [apiKey, setApiKey] = useState(() =>
     import.meta.env.VITE_ELEVENLABS_API_KEY ||
     localStorage.getItem('elevenlabs_api_key') ||
@@ -163,6 +162,7 @@ export default function App() {
   const chosenRef       = useRef(null);
 
   const requestIdRef = useRef(0);
+  const routeAbortRef = useRef(null);
   const startSearchReqRef = useRef(0);
   const destinationSearchReqRef = useRef(0);
   const startReverseReqRef = useRef(0);
@@ -467,9 +467,14 @@ export default function App() {
       return;
     }
 
+    // Abort any in-flight route fetch (graph Overpass + OSRM) before starting a new one
+    routeAbortRef.current?.abort();
+    const routeController = new AbortController();
+    routeAbortRef.current = routeController;
+
     setLoading(true); setError(null); setWarning(null);
     try {
-      const rs = await fetchRoutes(startPoint, endPoint);
+      const rs = await fetchRoutes(startPoint, endPoint, { filters, signal: routeController.signal });
       if (reqId !== requestIdRef.current) return;
       setRoutes(rs);
       const bbox = combinedBbox(rs);
@@ -503,6 +508,21 @@ export default function App() {
     if (start && end) computeRoute(start, end);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [start, end]);
+
+  // Auto-recalculate when route settings change (filters, mode, pace, departure)
+  const prevSettingsRef = useRef(null);
+  useEffect(() => {
+    if (!start || !end) return;
+    const current = JSON.stringify({ filters, selectedModeId, paceId, customPaceMps, departureMinutes });
+    if (prevSettingsRef.current === null) {
+      prevSettingsRef.current = current;
+      return;
+    }
+    if (prevSettingsRef.current === current) return;
+    prevSettingsRef.current = current;
+    computeRoute(start, end, { force: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters, selectedModeId, paceId, customPaceMps, departureMinutes]);
 
   useEffect(() => {
     if (!startSearchOpen) return;
@@ -582,6 +602,7 @@ export default function App() {
 
   useEffect(() => () => {
     requestIdRef.current += 1;
+    routeAbortRef.current?.abort();
     startSearchAbortRef.current?.abort();
     destinationSearchAbortRef.current?.abort();
     startReverseAbortRef.current?.abort();
@@ -812,7 +833,7 @@ export default function App() {
           arrived={arrived}
           simulating={simulating}
           gpsError={gpsError}
-          accessible={accessibleMode}
+
           apiKey={apiKey}
           voiceId={voiceId}
           onEnd={endNavigation}
@@ -918,19 +939,6 @@ export default function App() {
       </button>
 
       <div className="fab-stack">
-        {/* Recalculate — refetch routes ignoring cache */}
-        {start && end && !navActive && (
-          <button
-            type="button"
-            className="fab"
-            onClick={() => computeRoute(start, end, { force: true })}
-            disabled={loading}
-            aria-label="Recalculate route"
-            title="Recalculate"
-          >
-            <span aria-hidden="true">↻</span>
-          </button>
-        )}
         {/* Start Navigation — visible when a route is ready and not yet navigating */}
         {chosen && !navActive && (
           <button
@@ -943,16 +951,7 @@ export default function App() {
             <span aria-hidden="true">▶</span>
           </button>
         )}
-        {/* Accessibility mode toggle */}
-        <button
-          type="button"
-          className={`fab${accessibleMode ? ' fab-active' : ''}`}
-          onClick={() => setAccessibleMode(m => !m)}
-          aria-label={accessibleMode ? 'Disable accessibility mode' : 'Enable accessibility mode'}
-          title="Accessibility mode"
-        >
-          <span aria-hidden="true">♿</span>
-        </button>
+
         <button
           type="button"
           className="fab"

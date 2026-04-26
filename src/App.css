@@ -1241,8 +1241,27 @@ html, body, #root {
 
 .support-marker-badge.toilet { --marker-color: #00897b; }
 .support-marker-badge.seating { --marker-color: #ef6c00; }
-.support-marker-badge.station { --marker-color: #5e35b1; }
-.support-marker-badge.report { --marker-color: #b3261e; }
+
+.hazard-div-icon {
+  background: transparent;
+  border: 0;
+}
+
+.hazard-marker-badge {
+  align-items: center;
+  background: var(--hazard-color, #607d8b);
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+  color: #fff;
+  display: flex;
+  font-size: 10px;
+  font-weight: 700;
+  height: 22px;
+  justify-content: center;
+  line-height: 1;
+  width: 22px;
+}
 
 .legend-badge {
   flex-shrink: 0;

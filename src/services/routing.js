@@ -1,5 +1,10 @@
 import { offsetWaypoint } from '../utils/geo';
 import { friendlyFetchError } from './http';
+import { fetchGraphRoutes } from './graphRouter';
+
+// ---------------------------------------------------------------------------
+// OSRM fallback — used when the custom graph router is unavailable
+// ---------------------------------------------------------------------------
 
 const ROUTE_OFFSETS_METERS = [0, 800, -800, 1600, -1600];
 const MAX_UNIQUE_ROUTES = 3;
@@ -9,21 +14,19 @@ function normalizeRoute(route) {
   const steps = [];
   for (const leg of route.legs || []) {
     for (const step of leg.steps || []) {
-      // OSRM returns maneuver.location as [lng, lat]; we store as [lat, lng]
       const loc = step.maneuver?.location;
       steps.push({
-        distance: step.distance,
-        duration: step.duration,
-        name: step.name,
-        instruction: step.maneuver?.type || '',
-        modifier: step.maneuver?.modifier || '',
-        location: loc ? [loc[1], loc[0]] : null,
+        distance:    step.distance,
+        duration:    step.duration,
+        name:        step.name,
+        instruction: step.maneuver?.type     || '',
+        modifier:    step.maneuver?.modifier || '',
+        location:    loc ? [loc[1], loc[0]] : null,
       });
     }
   }
-
   return {
-    coords: route.geometry.coordinates.map(([lon, lat]) => [lat, lon]),
+    coords:   route.geometry.coordinates.map(([lon, lat]) => [lat, lon]),
     distance: route.distance,
     duration: route.duration,
     steps
@@ -31,12 +34,8 @@ function normalizeRoute(route) {
 }
 
 async function fetchOsrmRoutes(coords, { alternatives = false, signal } = {}) {
-  const path = coords.map(c => `${c.lng},${c.lat}`).join(';');
-  const params = new URLSearchParams({
-    overview: 'full',
-    geometries: 'geojson',
-    steps: 'true'
-  });
+  const path   = coords.map(c => `${c.lng},${c.lat}`).join(';');
+  const params = new URLSearchParams({ overview: 'full', geometries: 'geojson', steps: 'true' });
   if (alternatives) params.set('alternatives', '3');
 
   const url = `${ROUTING_BASE_URL}/${path}?${params.toString()}`;
@@ -78,7 +77,7 @@ function pickPrimaryError(settled) {
   return null;
 }
 
-export async function fetchRoutes(start, end, { signal } = {}) {
+async function fetchOsrmFallback(start, end, { signal } = {}) {
   if (signal?.aborted) throw new Error('Request cancelled');
   const tasks = ROUTE_OFFSETS_METERS.map(off => {
     if (off === 0) return fetchOsrmRoutes([start, end], { alternatives: true, signal });
@@ -89,10 +88,7 @@ export async function fetchRoutes(start, end, { signal } = {}) {
   const settled = await Promise.allSettled(tasks);
   if (signal?.aborted) throw new Error('Request cancelled');
 
-  const ok = settled
-    .filter(s => s.status === 'fulfilled')
-    .flatMap(s => s.value);
-
+  const ok = settled.filter(s => s.status === 'fulfilled').flatMap(s => s.value);
   if (ok.length === 0) {
     const reason = pickPrimaryError(settled);
     throw new Error(reason ? `All routing attempts failed: ${reason}` : 'All routing attempts failed');
@@ -108,4 +104,24 @@ export async function fetchRoutes(start, end, { signal } = {}) {
     if (unique.length >= MAX_UNIQUE_ROUTES) break;
   }
   return unique.sort((a, b) => a.distance - b.distance || a.duration - b.duration);
+}
+
+// ---------------------------------------------------------------------------
+// Public API — tries the preference-weighted custom router first, then falls
+// back to the OSRM service so the app always works even if Overpass is down.
+// ---------------------------------------------------------------------------
+
+export async function fetchRoutes(start, end, { filters, signal } = {}) {
+  try {
+    const routes = await fetchGraphRoutes(start, end, { filters, signal });
+    if (routes && routes.length > 0) return routes;
+  } catch (err) {
+    // Propagate genuine user-initiated cancellations
+    if (err?.name === 'AbortError' || signal?.aborted || err?.message === 'Request cancelled') {
+      throw new Error('Request cancelled');
+    }
+    console.warn('[routing] Custom graph router unavailable, falling back to OSRM:', err.message);
+  }
+
+  return fetchOsrmFallback(start, end, { signal });
 }

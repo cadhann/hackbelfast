@@ -7,9 +7,7 @@ import { classifyFeature } from '../services/routeScoring';
 
 const SUPPORT_MARKER_STYLES = {
   toilet: { color: '#00897b', label: 'WC', title: 'Toilet' },
-  seating: { color: '#ef6c00', label: 'B', title: 'Seating' },
-  station: { color: '#5e35b1', label: 'ST', title: 'Station access' },
-  report: { color: '#b3261e', label: '!', title: 'Route report' }
+  seating: { color: '#ef6c00', label: 'B', title: 'Seating' }
 };
 
 const METERS_PER_DEGREE_LAT = 111320;
@@ -38,9 +36,7 @@ const SUPPORT_MARKER_ICONS = Object.fromEntries(
 function buildSupportMarkers(chosen) {
   const items = [
     ...(chosen?.toiletsNear || []).map(feature => ({ kind: 'toilet', feature })),
-    ...(chosen?.seatingNear || []).map(feature => ({ kind: 'seating', feature })),
-    ...(chosen?.stationAccessNear || []).map(feature => ({ kind: 'station', feature })),
-    ...(chosen?.communityReportsNear || []).map(feature => ({ kind: 'report', feature }))
+    ...(chosen?.seatingNear || []).map(feature => ({ kind: 'seating', feature }))
   ];
 
   const groups = [];
@@ -115,6 +111,52 @@ function MapFollower({ position, follow }) {
   return null;
 }
 
+// Hazard / infrastructure indicators — always visible when a route is shown.
+// Crossings: color-coded by quality (tactile+kerb). Raised kerbs: amber. Stairs: gray.
+function HazardMarker({ el, kind }) {
+  const tags = el.tags || {};
+
+  let color, label, title;
+  if (kind === 'steps') {
+    color = '#607d8b'; label = '≡'; title = 'Steps / stairs';
+  } else if (kind === 'kerb') {
+    color = '#f57c00'; label = '⬆'; title = 'Raised kerb';
+  } else {
+    // crossing — color by quality
+    const c = classifyFeature(el);
+    const good = (c.tactileYes ? 1 : 0) + (c.lowKerb ? 1 : 0) + (c.audioYes ? 1 : 0);
+    const bad  = (c.tactileNo  ? 1 : 0) + (c.highKerb ? 1 : 0) + (c.audioNo  ? 1 : 0);
+    color = bad > good ? '#c0392b' : good > 0 ? '#0a8754' : '#f59e0b';
+    label = '⊕';
+    title = tags.crossing === 'traffic_signals' || tags.crossing === 'signals'
+      ? 'Signalised crossing' : 'Pedestrian crossing';
+  }
+
+  const icon = L.divIcon({
+    className: 'hazard-div-icon',
+    html: `<span class="hazard-marker-badge" style="--hazard-color:${color}">${label}</span>`,
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+    popupAnchor: [0, -12]
+  });
+
+  const pos = el.lat != null ? [el.lat, el.lon ?? el.lng] : null;
+  if (!pos) return null;
+
+  return (
+    <Marker position={pos} icon={icon}>
+      <Popup>
+        <div style={{ fontSize: 12 }}>
+          <strong>{tags.name || title}</strong>
+          {tags.tactile_paving && <div style={{ marginTop: 4 }}>Tactile paving: {tags.tactile_paving}</div>}
+          {tags.kerb && <div>Kerb: {tags.kerb}</div>}
+          {tags['traffic_signals:sound'] && <div>Audio signal: {tags['traffic_signals:sound']}</div>}
+        </div>
+      </Popup>
+    </Marker>
+  );
+}
+
 function FeatureMarker({ el }) {
   const c = classifyFeature(el);
   const tags = el.tags || {};
@@ -174,7 +216,12 @@ function SupportMarker({ feature, kind }) {
 
 export default function JourneyMap({ hint, loading, start, end, scored, chosen, chosenIndex, visibleIndices, onMapClick, userPosition, followUser }) {
   const supportMarkers = useMemo(() => buildSupportMarkers(chosen), [chosen]);
-  const [showIcons, setShowIcons] = useState(true);
+  const [showAnalysis, setShowAnalysis] = useState(false);
+
+  const crossingNodes = chosen?.crossingsOnRoute || [];
+  const raisedKerbNodes = chosen?.kerbsOnRoute || [];
+  const stepsNodes = chosen?.stepsNear || [];
+
   return (
     <div className="map-area">
       {hint && <div className="map-hint">{hint}</div>}
@@ -182,13 +229,13 @@ export default function JourneyMap({ hint, loading, start, end, scored, chosen, 
       <div className="map-controls">
         <button
           type="button"
-          className={`map-icons-toggle${showIcons ? '' : ' off'}`}
-          onClick={() => setShowIcons(v => !v)}
-          aria-pressed={showIcons}
-          title={showIcons ? 'Hide map icons' : 'Show map icons'}
+          className={`map-icons-toggle${showAnalysis ? '' : ' off'}`}
+          onClick={() => setShowAnalysis(v => !v)}
+          aria-pressed={showAnalysis}
+          title={showAnalysis ? 'Hide routing analysis circles' : 'Show routing analysis circles'}
         >
-          <span aria-hidden="true">{showIcons ? '👁' : '🚫'}</span>
-          <span className="map-icons-toggle-label">{showIcons ? 'Icons' : 'Icons off'}</span>
+          <span aria-hidden="true">{showAnalysis ? '👁' : '👁'}</span>
+          <span className="map-icons-toggle-label">{showAnalysis ? 'Analysis on' : 'Analysis'}</span>
         </button>
       </div>
       <MapContainer
@@ -236,8 +283,13 @@ export default function JourneyMap({ hint, loading, start, end, scored, chosen, 
             />
           </>
         )}
-        {showIcons && chosen && chosen.near.map(el => <FeatureMarker key={el.id} el={el} />)}
-        {showIcons && supportMarkers.map(item => (
+        {/* Always-visible hazard indicators: crossings, raised kerbs, stairs */}
+        {chosen && crossingNodes.map(el => <HazardMarker key={`crossing-${el.id}`} el={el} kind="crossing" />)}
+        {chosen && raisedKerbNodes.map(el => <HazardMarker key={`kerb-${el.id}`} el={el} kind="kerb" />)}
+        {chosen && stepsNodes.map(el => <HazardMarker key={`steps-${el.id}`} el={el} kind="steps" />)}
+        {/* Routing analysis circles — toggled via the Analysis button (default off) */}
+        {showAnalysis && chosen && chosen.near.map(el => <FeatureMarker key={el.id} el={el} />)}
+        {supportMarkers.map(item => (
           <SupportMarker key={`${item.kind}-${item.feature.id}`} feature={item} kind={item.kind} />
         ))}
         {/* Live GPS position — outer ring + inner dot */}
