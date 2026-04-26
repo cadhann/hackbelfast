@@ -6,6 +6,7 @@ import MapLegend from './components/MapLegend';
 import NavigationHud from './components/NavigationHud';
 import DeparturePicker from './components/DeparturePicker';
 import PaceSelector from './components/PaceSelector';
+import ProfileSelector from './components/ProfileSelector';
 import PreferenceList from './components/PreferenceList';
 import ReportDialog from './components/ReportDialog';
 import RouteDetails from './components/RouteDetails';
@@ -17,6 +18,7 @@ import { formatDistance, formatDuration } from './utils/format';
 import { FILTERS } from './config/preferences';
 import { DEFAULT_ROUTE_MODE_ID } from './config/routeModes';
 import { DEFAULT_PACE_ID, adjustedDurationSeconds, clampCustomMps, resolvePaceMps } from './config/walkingPace';
+import { DEFAULT_PROFILE_ID } from './config/profiles';
 import { evaluateRouteTimedClosures } from './services/timedAccess';
 import { getDemoAccessibilityData } from './data/belfastDemoSeed';
 import { fetchAccessibilityData } from './services/accessibilityData';
@@ -95,6 +97,26 @@ export default function App() {
   const [reportOpen, setReportOpen] = useState(false);
   // Departure time — null means "leave now"
   const [departureMinutes, setDepartureMinutes] = useState(null);
+  const [activeProfileId, setActiveProfileId] = useState(
+    () => localStorage.getItem('safestep_profile_id') || DEFAULT_PROFILE_ID
+  );
+
+  const applyProfile = useCallback((profile) => {
+    if (!profile) return;
+    setActiveProfileId(profile.id);
+    localStorage.setItem('safestep_profile_id', profile.id);
+    setPaceId(profile.paceId);
+    localStorage.setItem('safestep_pace_id', profile.paceId);
+    setCustomPaceMps(profile.customPaceMps ?? null);
+    if (profile.customPaceMps == null) {
+      localStorage.removeItem('safestep_pace_custom_mps');
+    } else {
+      localStorage.setItem('safestep_pace_custom_mps', String(profile.customPaceMps));
+    }
+    setSelectedModeId(profile.modeId);
+    setFilters(prev => ({ ...prev, ...profile.filters }));
+    setSelectedRouteIndex(null);
+  }, []);
 
   // ── Navigation state ──────────────────────────────────────────────────────
   const [navActive, setNavActive]     = useState(false);
@@ -913,6 +935,14 @@ export default function App() {
           activeModeId={selectedMode?.id || selectedModeId}
           onSelectRoute={setSelectedRouteIndex}
           onSelectMode={(id) => { setSelectedModeId(id); setSelectedRouteIndex(null); }}
+        />
+        <ProfileSelector
+          activeProfileId={activeProfileId}
+          paceId={paceId}
+          customPaceMps={customPaceMps}
+          modeId={selectedModeId}
+          filters={filters}
+          onApply={applyProfile}
         />
         <DeparturePicker
           departureMinutes={departureMinutes}

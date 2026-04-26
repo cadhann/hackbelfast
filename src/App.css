@@ -1591,6 +1591,62 @@ html, body, #root {
 .report-thanks-title { font-size: 17px; font-weight: 600; color: var(--gm-text); }
 .report-thanks-sub   { font-size: 13px; color: var(--gm-text-muted); }
 
+/* ── Profile selector ── */
+.profiles-section {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.profiles-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.profiles-modified {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--warn);
+  background: var(--warn-light);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.profiles-row {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
+}
+.profile-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  background: var(--gm-bg);
+  border: 1px solid var(--gm-border);
+  border-radius: 999px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  color: var(--gm-text);
+  white-space: nowrap;
+  transition: background 120ms, border-color 120ms;
+}
+.profile-chip:hover { border-color: #b8bdc4; background: var(--gm-surface); }
+.profile-chip.active {
+  background: var(--gm-blue);
+  border-color: var(--gm-blue);
+  color: white;
+}
+.profile-chip-icon { font-size: 15px; }
+.profile-chip-label { font-weight: 500; }
+
 /* ── Departure picker ── */
 .depart-row {
   display: flex;
