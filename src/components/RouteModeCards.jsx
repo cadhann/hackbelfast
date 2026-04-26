@@ -87,6 +87,14 @@ export default function RouteModeCards({
                 {isRecommended && !c.blocked && <span className="route-pill recommended">Best match</span>}
                 {isSelected    && !c.blocked && <span className="route-pill selected">Selected</span>}
                 {c.blocked                   && <span className="route-pill warn">Restricted</span>}
+                {!c.blocked && c.blockingClosures?.length > 0 && (
+                  <span
+                    className="route-pill warn"
+                    title={c.blockingClosures.map(t => `${t.place.name} (${t.hoursLabel || 'closed'})`).join('\n')}
+                  >
+                    Gates closed
+                  </span>
+                )}
               </div>
             </button>
           );

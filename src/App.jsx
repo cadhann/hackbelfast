@@ -4,6 +4,7 @@ import DirectionsBar from './components/DirectionsBar';
 import JourneyMap from './components/JourneyMap';
 import MapLegend from './components/MapLegend';
 import NavigationHud from './components/NavigationHud';
+import DeparturePicker from './components/DeparturePicker';
 import PaceSelector from './components/PaceSelector';
 import PreferenceList from './components/PreferenceList';
 import ReportDialog from './components/ReportDialog';
@@ -16,6 +17,7 @@ import { formatDistance, formatDuration } from './utils/format';
 import { FILTERS } from './config/preferences';
 import { DEFAULT_ROUTE_MODE_ID } from './config/routeModes';
 import { DEFAULT_PACE_ID, adjustedDurationSeconds, clampCustomMps, resolvePaceMps } from './config/walkingPace';
+import { evaluateRouteTimedClosures } from './services/timedAccess';
 import { getDemoAccessibilityData } from './data/belfastDemoSeed';
 import { fetchAccessibilityData } from './services/accessibilityData';
 import { coordinateLabel, reverseGeocodePoint, searchPlaces } from './services/geocoding';
@@ -91,6 +93,8 @@ export default function App() {
   });
   const [sidebarOpen, setSidebarOpen] = useState(!isMobileViewport());
   const [reportOpen, setReportOpen] = useState(false);
+  // Departure time — null means "leave now"
+  const [departureMinutes, setDepartureMinutes] = useState(null);
 
   // ── Navigation state ──────────────────────────────────────────────────────
   const [navActive, setNavActive]     = useState(false);
@@ -569,6 +573,17 @@ export default function App() {
 
   const paceMps = useMemo(() => resolvePaceMps(paceId, customPaceMps), [paceId, customPaceMps]);
 
+  // Resolve the actual Date the user wants to leave at. null = "now".
+  const departureDate = useMemo(() => {
+    const d = new Date();
+    if (departureMinutes != null) {
+      d.setHours(Math.floor(departureMinutes / 60), departureMinutes % 60, 0, 0);
+      // If the chosen time is in the past today, treat it as tomorrow
+      if (d.getTime() < Date.now() - 60 * 1000) d.setDate(d.getDate() + 1);
+    }
+    return d;
+  }, [departureMinutes]);
+
   const candidates = useMemo(() => {
     if (!recommendedMode || routeAnalyses.length === 0) return [];
     return routeAnalyses.map(a => {
@@ -585,14 +600,18 @@ export default function App() {
         return !!s.modifier || s.instruction === 'turn' || s.instruction === 'roundabout' || s.instruction === 'rotary';
       }).length;
       const adjusted = adjustedDurationSeconds(scored.route, paceMps, { signalCount, turnCount });
+      const timedClosures = evaluateRouteTimedClosures(scored.route?.coords, departureDate, adjusted);
+      const blockingClosures = timedClosures.filter(t => !t.willBeOpen);
       return {
         ...scored,
         signalCount,
         turnCount,
+        timedClosures,
+        blockingClosures,
         route: { ...scored.route, duration: adjusted, durationOsrm: scored.route?.duration }
       };
     });
-  }, [routeAnalyses, recommendedMode, paceMps]);
+  }, [routeAnalyses, recommendedMode, paceMps, departureDate]);
 
   const recommendedIndex = recommendedMode?.routeIndex ?? -1;
 
@@ -894,6 +913,10 @@ export default function App() {
           activeModeId={selectedMode?.id || selectedModeId}
           onSelectRoute={setSelectedRouteIndex}
           onSelectMode={(id) => { setSelectedModeId(id); setSelectedRouteIndex(null); }}
+        />
+        <DeparturePicker
+          departureMinutes={departureMinutes}
+          onChange={setDepartureMinutes}
         />
         <PaceSelector
           paceId={paceId}

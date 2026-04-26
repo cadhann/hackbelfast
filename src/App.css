@@ -1591,6 +1591,85 @@ html, body, #root {
 .report-thanks-title { font-size: 17px; font-weight: 600; color: var(--gm-text); }
 .report-thanks-sub   { font-size: 13px; color: var(--gm-text-muted); }
 
+/* ── Departure picker ── */
+.depart-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.depart-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--gm-text-muted);
+}
+.depart-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.depart-pill {
+  background: var(--gm-bg);
+  border: 1px solid var(--gm-border);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--gm-text);
+  cursor: pointer;
+}
+.depart-pill.active {
+  background: var(--gm-blue);
+  border-color: var(--gm-blue);
+  color: white;
+}
+.depart-input {
+  border: 1px solid var(--gm-border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--gm-text);
+  background: var(--gm-bg);
+}
+.depart-input:focus { border-color: var(--gm-blue); outline: none; }
+
+/* ── Timed access notice ── */
+.timed-closures .section-title { color: var(--warn); }
+.timed-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.timed-item {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--gm-border);
+  background: var(--gm-bg);
+}
+.timed-item.closed {
+  background: var(--warn-light);
+  border-color: #fde68a;
+}
+.timed-item.open {
+  background: var(--safe-light);
+  border-color: #bbf7d0;
+}
+.timed-icon { font-size: 18px; line-height: 1.4; flex-shrink: 0; }
+.timed-body { display: flex; flex-direction: column; gap: 2px; }
+.timed-name { font-size: 14px; font-weight: 500; color: var(--gm-text); }
+.timed-meta { font-size: 12px; color: var(--gm-text-muted); }
+.timed-note { font-size: 11px; color: var(--gm-text-muted); margin-top: 2px; }
+
 /* ── Pace selector ── */
 .pace-section {
   display: flex;

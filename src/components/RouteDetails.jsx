@@ -157,8 +157,31 @@ export default function RouteDetails({ chosen, selectedMode, featureStats, filte
     note: getItemNote(item)
   })).slice(0, 4);
 
+  const timedClosures = chosen.timedClosures || [];
+  const hasClosures = timedClosures.length > 0;
+
   return (
     <>
+      {hasClosures && (
+        <div className="details-section timed-closures">
+          <div className="section-title">Timed access</div>
+          <ul className="timed-list">
+            {timedClosures.map(t => (
+              <li key={t.place.id} className={`timed-item${t.willBeOpen ? ' open' : ' closed'}`}>
+                <span className="timed-icon" aria-hidden="true">{t.willBeOpen ? '✓' : '⛔'}</span>
+                <span className="timed-body">
+                  <span className="timed-name">{t.place.name}</span>
+                  <span className="timed-meta">
+                    {t.willBeOpen ? `Open at ${t.arrivalLabel}` : `Likely closed at ${t.arrivalLabel}`}
+                    {t.hoursLabel ? ` · today ${t.hoursLabel}` : ''}
+                  </span>
+                  {t.place.note && <span className="timed-note">{t.place.note}</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="details-section">
         <div className="section-title">Route health</div>
 
