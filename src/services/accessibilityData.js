@@ -356,8 +356,7 @@ export async function fetchAccessibilityData(bbox) {
         forbiddenWays.push(el);
       } else if (isSteps) {
         stepsWays.push(el);
-      } else if (t.highway === 'primary' || t.highway === 'secondary' || t.highway === 'trunk' ||
-                 t.highway === 'primary_link' || t.highway === 'secondary_link' || t.highway === 'trunk_link') {
+      } else if (parseInt(t.lanes, 10) >= 4) {
         busyWays.push(el);
       }
       if (t.lit === 'yes') litWays.push(el);

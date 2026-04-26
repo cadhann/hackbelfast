@@ -60,7 +60,7 @@ const SMOOTH_SURFACES = new Set([
 ]);
 const BAD_SMOOTHNESS  = new Set(['bad', 'very_bad', 'horrible', 'very_horrible', 'impassable']);
 const GOOD_SMOOTHNESS = new Set(['excellent', 'good', 'intermediate']);
-const BUSY_HIGHWAYS   = new Set(['primary', 'secondary', 'trunk', 'primary_link', 'secondary_link', 'trunk_link']);
+const MIN_BUSY_LANES = 4;
 
 function parseInclinePct(value) {
   if (!value) return null;
@@ -81,7 +81,8 @@ export function edgeCost(edge, destNode, weights) {
   const smoothness = (tags.smoothness || '').toLowerCase();
 
   const isSteps       = highway === 'steps';
-  const isBusy        = BUSY_HIGHWAYS.has(highway);
+  const lanes         = parseInt(tags.lanes, 10);
+  const isBusy        = Number.isFinite(lanes) && lanes >= MIN_BUSY_LANES;
   const isRough       = ROUGH_SURFACES.has(surface) || BAD_SMOOTHNESS.has(smoothness);
   const isSmooth      = SMOOTH_SURFACES.has(surface) || GOOD_SMOOTHNESS.has(smoothness);
   const isPedestrian  = highway === 'pedestrian' || highway === 'living_street';
