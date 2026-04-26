@@ -577,6 +577,7 @@ export default function App() {
     distanceToNext,
     currentInstruction,
     currentStep,
+    nextStepIdx,
     arrived,
     updatePosition,
   } = useNavigation({
@@ -678,6 +679,9 @@ export default function App() {
           instruction={currentInstruction}
           distanceToNext={distanceToNext}
           currentStep={currentStep}
+          followingStep={navSteps?.[nextStepIdx + 1] || null}
+          totalSteps={navSteps?.length || 0}
+          stepIndex={nextStepIdx}
           arrived={arrived}
           simulating={simulating}
           gpsError={gpsError}

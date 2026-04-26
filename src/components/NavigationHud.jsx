@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { VOICES } from '../services/elevenlabs';
 import { formatDistance } from '../utils/format';
+import { describeStep } from '../hooks/useNavigation';
 
 const MODIFIER_ARROW = {
   left:          '←',
@@ -21,10 +22,30 @@ function arrowForStep(step, arrived) {
   return MODIFIER_ARROW[step.modifier] || '↑';
 }
 
+function urgencyFor(distance, arrived) {
+  if (arrived) return 'arrived';
+  if (distance == null) return 'far';
+  if (distance <= 15) return 'now';
+  if (distance <= 50) return 'imminent';
+  if (distance <= 120) return 'approaching';
+  return 'far';
+}
+
+function distanceLead(distance, urgency, arrived) {
+  if (arrived) return null;
+  if (urgency === 'now') return 'Turn now';
+  if (urgency === 'imminent') return 'Get ready';
+  if (distance == null) return null;
+  return 'In';
+}
+
 export default function NavigationHud({
   instruction,
   distanceToNext,
   currentStep,
+  followingStep,
+  totalSteps,
+  stepIndex,
   arrived,
   simulating,
   gpsError,
@@ -43,6 +64,12 @@ export default function NavigationHud({
 
   const arrow    = arrowForStep(currentStep, arrived);
   const distText = distanceToNext != null ? formatDistance(distanceToNext) : null;
+  const urgency  = urgencyFor(distanceToNext, arrived);
+  const lead     = distanceLead(distanceToNext, urgency, arrived);
+  const followingArrow = followingStep ? arrowForStep(followingStep, false) : null;
+  const followingText  = followingStep && stepIndex != null && totalSteps
+    ? describeStep(followingStep, stepIndex + 1, totalSteps)
+    : null;
 
   return (
     <div
@@ -50,6 +77,7 @@ export default function NavigationHud({
         'nav-hud',
         arrived    ? 'nav-hud--arrived' : '',
         accessible ? 'nav-hud--a11y'   : '',
+        `nav-hud--${urgency}`,
       ].filter(Boolean).join(' ')}
       role="region"
       aria-label="Turn-by-turn navigation"
@@ -60,8 +88,12 @@ export default function NavigationHud({
         <div className="nav-hud-arrow" aria-hidden="true">{arrow}</div>
         <div className="nav-hud-info">
           <div className="nav-hud-instr">{arrived ? 'You have arrived!' : instruction}</div>
-          {!arrived && distText && (
-            <div className="nav-hud-dist">In {distText}</div>
+          {!arrived && (lead || distText) && (
+            <div className={`nav-hud-dist nav-hud-dist--${urgency}`}>
+              {lead && <span className="nav-hud-lead">{lead}</span>}
+              {lead && distText && urgency !== 'now' ? ' ' : ''}
+              {urgency !== 'now' && distText && <span>{distText}</span>}
+            </div>
           )}
           {gpsError && (
             <div className="nav-hud-gps-warn">⚠ GPS: {gpsError}</div>
@@ -77,6 +109,15 @@ export default function NavigationHud({
           ✕
         </button>
       </div>
+
+      {/* ── Then… preview of the step after the next one ── */}
+      {!arrived && followingStep && followingText && (
+        <div className="nav-hud-then" aria-label="After that">
+          <span className="nav-hud-then-label">Then</span>
+          <span className="nav-hud-then-arrow" aria-hidden="true">{followingArrow}</span>
+          <span className="nav-hud-then-text">{followingText}</span>
+        </div>
+      )}
 
       {/* ── Action bar ── */}
       <div className="nav-hud-bar">

@@ -1428,6 +1428,67 @@ html, body, #root {
 .nav-hud--a11y .nav-hud-dist   { font-size: 18px; }
 .nav-hud--a11y .nav-hud-arrow  { font-size: 54px; width: 66px; }
 
+/* ── Urgency styling: how soon the next maneuver is ── */
+.nav-hud-lead {
+  font-weight: 600;
+  margin-right: 6px;
+}
+.nav-hud-dist--approaching .nav-hud-lead { color: #ffd54f; }
+.nav-hud-dist--imminent { color: #ffd54f; font-weight: 700; }
+.nav-hud-dist--now {
+  color: #fff;
+  background: var(--gm-red);
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  animation: nav-pulse 0.9s ease-in-out infinite;
+}
+.nav-hud--imminent .nav-hud-arrow { color: #ffd54f; }
+.nav-hud--now {
+  background: linear-gradient(135deg, var(--gm-red) 0%, #b3261e 100%);
+  animation: nav-pulse-bg 1s ease-in-out infinite;
+}
+.nav-hud--now .nav-hud-arrow { animation: nav-arrow-bounce 0.6s ease-in-out infinite alternate; }
+
+@keyframes nav-pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.06); }
+}
+@keyframes nav-pulse-bg {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(217,48,37,0.45); }
+  50%      { box-shadow: 0 0 0 8px rgba(217,48,37,0); }
+}
+@keyframes nav-arrow-bounce {
+  from { transform: translateX(0); }
+  to   { transform: translateX(4px); }
+}
+
+/* ── "Then …" preview row for the step after the upcoming one ── */
+.nav-hud-then {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255,255,255,0.10);
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: rgba(255,255,255,0.92);
+}
+.nav-hud-then-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.75;
+  font-weight: 600;
+}
+.nav-hud-then-arrow { font-size: 18px; opacity: 0.9; }
+.nav-hud-then-text { flex: 1; min-width: 0; }
+.nav-hud--a11y .nav-hud-then { font-size: 16px; }
+.nav-hud--a11y .nav-hud-then-arrow { font-size: 22px; }
+
 /* ===== FAB active state (accessibility toggle) ===== */
 .fab-nav { background: var(--gm-blue); color: #fff; }
 .fab-nav:hover:not(:disabled) { background: var(--gm-blue-dark); }
