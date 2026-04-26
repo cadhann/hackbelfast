@@ -82,24 +82,32 @@ function clearEdgePenalties(adjacency) {
     for (const e of edges) delete e._detourPenalty;
 }
 
-// Convert a node-ID path into the { coords, distance, duration, steps } shape
+// Convert a node-ID path into the { coords, distance, duration, steps, edgeData } shape
 // that the rest of the app expects (same as OSRM normalizeRoute output).
+// edgeData is an array of { distanceMeters, tags } for each consecutive coord pair,
+// allowing the scorer to classify edges directly from OSM tags rather than spatial matching.
 function pathToRoute(pathIds, nodes, adjacency) {
-  const coords = pathIds.map(id => {
-    const n = nodes.get(id);
-    return n ? [n.lat, n.lon] : null;
-  }).filter(Boolean);
+  const coords = [];
+  const edgeData = [];
 
-  let distance = 0;
-  for (let i = 0; i < pathIds.length - 1; i++) {
-    for (const edge of adjacency.get(pathIds[i]) ?? []) {
-      if (edge.to === pathIds[i + 1]) { distance += edge.distanceMeters; break; }
+  for (let i = 0; i < pathIds.length; i++) {
+    const n = nodes.get(pathIds[i]);
+    if (!n) continue;
+    coords.push([n.lat, n.lon]);
+
+    if (i < pathIds.length - 1) {
+      let matched = null;
+      for (const edge of adjacency.get(pathIds[i]) ?? []) {
+        if (edge.to === pathIds[i + 1]) { matched = edge; break; }
+      }
+      edgeData.push(matched ? { distanceMeters: matched.distanceMeters, tags: matched.tags || {} } : null);
     }
   }
 
+  const distance = edgeData.reduce((s, e) => s + (e?.distanceMeters ?? 0), 0);
   const steps    = buildSteps(pathIds, nodes, adjacency);
-  const duration = distance / 1.35; // ~1.35 m/s average walking pace
-  return { coords, distance, duration, steps };
+  const duration = distance / 1.35;
+  return { coords, distance, duration, steps, edgeData };
 }
 
 // ---------------------------------------------------------------------------

@@ -393,6 +393,17 @@ function isGentleWay(way) {
   return incline !== null && incline > 0 && incline <= 3;
 }
 
+// Sum edge distances from graph-router edgeData where predicate(tags) is true.
+// Returns null when edgeData is absent so callers can fall back to spatial matching.
+function metersFromEdgeData(edgeData, predicate) {
+  if (!Array.isArray(edgeData)) return null;
+  let total = 0;
+  for (const e of edgeData) {
+    if (e && predicate(e.tags)) total += e.distanceMeters;
+  }
+  return total;
+}
+
 function classifyAmenityAccessibility(item) {
   const tags = getTags(item);
   const wheelchair = String(tags.wheelchair || '').toLowerCase();
@@ -818,44 +829,48 @@ export function analyzeRoute(route, accData) {
     return tags.kerb === 'raised' && tags.highway !== 'crossing';
   });
 
-  const busyMeters = busyMetersOnRoute(accData?.busyWays || [], route.coords);
+  const ed = route.edgeData ?? null;
+
+  const busyMeters = metersFromEdgeData(ed, t => parseInt(t.lanes, 10) >= 4)
+    ?? busyMetersOnRoute(accData?.busyWays || [], route.coords);
   const forbiddenMeters = forbiddenMetersOnRoute(accData?.forbiddenWays || [], route.coords);
-  const stepsMeters = stepsMetersOnRoute(accData?.stepsWays || [], route.coords);
+  const stepsMeters = metersFromEdgeData(ed, t => t.highway === 'steps')
+    ?? stepsMetersOnRoute(accData?.stepsWays || [], route.coords);
   const stepsNear = stepsEntryPointsNearRoute(accData?.stepsWays || [], route.coords);
-  const narrowMeters = narrowMetersOnRoute(accData?.narrowWays || [], route.coords);
-  const litMeters = litMetersOnRoute(accData?.litWays || [], route.coords);
-  const unlitMeters = unlitMetersOnRoute(accData?.unlitWays || [], route.coords);
+  const narrowMeters = metersFromEdgeData(ed, t => { const w = parseFloat(t.width); return Number.isFinite(w) && w > 0 && w < 1.5; })
+    ?? narrowMetersOnRoute(accData?.narrowWays || [], route.coords);
+  const litMeters = metersFromEdgeData(ed, t => t.lit === 'yes')
+    ?? litMetersOnRoute(accData?.litWays || [], route.coords);
+  const unlitMeters = metersFromEdgeData(ed, t => t.lit === 'no')
+    ?? unlitMetersOnRoute(accData?.unlitWays || [], route.coords);
   const streetLampCount = lampsNearRoute(accData?.streetLamps || [], route.coords);
 
-  const roughWays = combineExplicitAndDerivedWays(
-    ['roughWays', 'roughSurfaceWays', 'surfaceRiskWays'],
-    'surfaceWays',
-    accData,
-    isRoughSurfaceWay
-  );
-  const smoothWays = combineExplicitAndDerivedWays(
-    ['smoothSurfaceWays', 'goodSurfaceWays'],
-    'surfaceWays',
-    accData,
-    isSmoothSurfaceWay
-  );
-  const steepWays = combineExplicitAndDerivedWays(
-    ['steepWays'],
-    'slopeWays',
-    accData,
-    isSteepWay
-  );
-  const gentleWays = combineExplicitAndDerivedWays(
-    ['gentleSlopeWays', 'flatWays'],
-    'slopeWays',
-    accData,
-    isGentleWay
-  );
-
-  const roughMeters = metersOnRouteAlongWays(roughWays, route.coords, 10);
-  const smoothMeters = metersOnRouteAlongWays(smoothWays, route.coords, 10);
-  const steepMeters = metersOnRouteAlongWays(steepWays, route.coords, 10);
-  const gentleMeters = metersOnRouteAlongWays(gentleWays, route.coords, 10);
+  const roughMeters = metersFromEdgeData(ed, t => {
+    const s = (t.surface || '').toLowerCase(); const sm = (t.smoothness || '').toLowerCase();
+    return ROUGH_SURFACES.has(s) || BAD_SMOOTHNESS.has(sm);
+  }) ?? (() => {
+    const roughWays = combineExplicitAndDerivedWays(['roughWays', 'roughSurfaceWays', 'surfaceRiskWays'], 'surfaceWays', accData, isRoughSurfaceWay);
+    return metersOnRouteAlongWays(roughWays, route.coords, 10);
+  })();
+  const smoothMeters = metersFromEdgeData(ed, t => {
+    const s = (t.surface || '').toLowerCase(); const sm = (t.smoothness || '').toLowerCase();
+    return SMOOTH_SURFACES.has(s) || GOOD_SMOOTHNESS.has(sm);
+  }) ?? (() => {
+    const smoothWays = combineExplicitAndDerivedWays(['smoothSurfaceWays', 'goodSurfaceWays'], 'surfaceWays', accData, isSmoothSurfaceWay);
+    return metersOnRouteAlongWays(smoothWays, route.coords, 10);
+  })();
+  const steepMeters = metersFromEdgeData(ed, t => {
+    const inc = parseInclinePercent(t.incline); return inc !== null && inc >= 6;
+  }) ?? (() => {
+    const steepWays = combineExplicitAndDerivedWays(['steepWays'], 'slopeWays', accData, isSteepWay);
+    return metersOnRouteAlongWays(steepWays, route.coords, 10);
+  })();
+  const gentleMeters = metersFromEdgeData(ed, t => {
+    const inc = parseInclinePercent(t.incline); return inc !== null && inc > 0 && inc <= 3;
+  }) ?? (() => {
+    const gentleWays = combineExplicitAndDerivedWays(['gentleSlopeWays', 'flatWays'], 'slopeWays', accData, isGentleWay);
+    return metersOnRouteAlongWays(gentleWays, route.coords, 10);
+  })();
 
   const toilets = mergeFeatureArrays(accData, ['publicToilets', 'toilets', 'toiletNodes']);
   const seating = mergeFeatureArrays(accData, ['seating', 'restPoints', 'benches', 'seatingNodes']);
