@@ -1,5 +1,3 @@
-import { BELFAST_DEMO_LANDMARKS } from './belfastDemoSeed';
-
 export const DESTINATIONS = [
   {
     id: 'grand-central',
@@ -91,5 +89,4 @@ export const DESTINATIONS = [
     lng: -5.9334,
     aliases: ['botanic park']
   },
-  ...BELFAST_DEMO_LANDMARKS
 ];

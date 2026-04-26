@@ -2,11 +2,6 @@ import { haversine } from '../utils/geo';
 import { fetchJson, friendlyFetchError } from './http';
 
 const OVERPASS_TIMEOUT_MS = 32000;
-const OVERPASS_ENDPOINTS = [
-  'https://overpass-api.de/api/interpreter',
-  'https://overpass.private.coffee/api/interpreter',
-  'https://h24.atownsend.org.uk/api/interpreter'
-];
 
 // Spatial grid cell size in degrees (~88 m). Used to build a node index so
 // nearest-node lookups don't scan the entire graph.
@@ -136,14 +131,12 @@ export async function fetchGraphData(bbox, { signal } = {}) {
 
   const encoded = encodeURIComponent(query);
   const isLocal = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(window.location.hostname);
-  const endpoints = isLocal ? ['/api/overpass', ...OVERPASS_ENDPOINTS] : OVERPASS_ENDPOINTS;
   const errors = [];
 
-  for (const ep of endpoints) {
     if (signal?.aborted) throw new Error('Request cancelled');
     try {
       const data = await fetchJson(
-        ep,
+        "https://concord.lacklab.net/overpass/api/interpreter",
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
@@ -155,14 +148,12 @@ export async function fetchGraphData(bbox, { signal } = {}) {
       const ways = (data.elements || []).filter(el => el.type === 'way' && Array.isArray(el.geometry) && el.geometry.length >= 2);
       if (ways.length === 0) {
         errors.push(`${ep}: returned 0 ways`);
-        continue;
       }
       return ways;
     } catch (err) {
       if (err?.name === 'AbortError' || signal?.aborted) throw new Error('Request cancelled');
       errors.push(`${ep}: ${friendlyFetchError(err)}`);
     }
-  }
 
   throw new Error(`Graph fetch failed on all endpoints — ${errors[errors.length - 1] || 'unknown error'}`);
 }

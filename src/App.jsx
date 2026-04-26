@@ -20,7 +20,6 @@ import { DEFAULT_ROUTE_MODE_ID } from './config/routeModes';
 import { DEFAULT_PACE_ID, adjustedDurationSeconds, clampCustomMps, resolvePaceMps } from './config/walkingPace';
 import { DEFAULT_PROFILE_ID } from './config/profiles';
 import { evaluateRouteTimedClosures } from './services/timedAccess';
-import { getDemoAccessibilityData } from './data/belfastDemoSeed';
 import { fetchAccessibilityData } from './services/accessibilityData';
 import { coordinateLabel, reverseGeocodePoint, searchPlaces } from './services/geocoding';
 import { buildRouteModes } from './services/routeModes';
@@ -486,10 +485,8 @@ export default function App() {
         nextAcc = data;
       } catch (e) {
         if (reqId !== requestIdRef.current) return;
-        nextAcc = getDemoAccessibilityData(bbox);
         nextWarning = (
-          'Using Belfast accessibility seed data because the OSM accessibility lookup is blocked or unreachable on this network. ' +
-          e.message
+          'Data unavailable. Please try again later'
         );
       }
       setAccData(nextAcc);

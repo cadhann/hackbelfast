@@ -30,7 +30,6 @@ User sets start/end (map click or search)
           astar.js         — edgeCost() applies OSM tag weights + filter boosts
         OR fetchOsrmFallback()  [if Overpass/graph unavailable]
       → fetchAccessibilityData()  [parallel bbox fetch for scoring data]
-          fallback: getDemoAccessibilityData() from data/belfastDemoSeed.js
   → analyzeRoute() in services/routeScoring.js  — measures feature metres/counts along route
   → buildRouteModes() in services/routeModes.js — scores + picks best route per mode
   → JourneyMap renders chosen route; BottomSheet sidebar shows options

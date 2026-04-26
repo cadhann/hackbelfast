@@ -576,99 +576,6 @@ function summarizeReports(reports, coords) {
   };
 }
 
-function classifyCrashHotspot(item) {
-  const tags = getTags(item);
-  const severityValue = String(
-    item?.severity ??
-    item?.riskLevel ??
-    tags.severity ??
-    tags.risk_level ??
-    tags.crash_severity ??
-    tags.priority ??
-    ''
-  ).toLowerCase();
-  const userGroup = String(item?.userGroup ?? tags.user_group ?? tags.road_user ?? tags.mode ?? '').toLowerCase();
-  const collisionCount = Number.parseFloat(
-    item?.collisionCount ??
-    item?.crashCount ??
-    item?.count ??
-    tags.collision_count ??
-    tags.crash_count ??
-    tags.collisions ??
-    tags.crashes ??
-    tags.count ??
-    0
-  );
-  const injuryCount = Number.parseFloat(
-    item?.injuryCount ??
-    item?.injuries ??
-    tags.injury_count ??
-    tags.injuries ??
-    tags.casualties ??
-    0
-  );
-  const fatalCount = Number.parseFloat(
-    item?.fatalCount ??
-    item?.fatalities ??
-    tags.fatal_count ??
-    tags.fatalities ??
-    0
-  );
-  const recentDays = parseDaysSince(
-    item?.reportedAt ??
-    item?.updatedAt ??
-    item?.date ??
-    tags.reported_at ??
-    tags.updated_at ??
-    tags.date
-  );
-
-  let severityFactor = 1;
-  if (
-    fatalCount > 0 ||
-    /fatal|critical|severe/.test(severityValue)
-  ) {
-    severityFactor = 1.8;
-  } else if (
-    injuryCount >= 2 ||
-    /high|major/.test(severityValue)
-  ) {
-    severityFactor = 1.45;
-  } else if (/low|minor/.test(severityValue)) {
-    severityFactor = 0.8;
-  }
-
-  const exposureCount = Number.isFinite(collisionCount) && collisionCount > 0 ? collisionCount : 1;
-  const recencyFactor = recentDays === null ? 1 : recentDays <= 365 ? 1.15 : 0.9;
-  const vulnerableFactor = /pedestrian|cycle|wheelchair|accessible|active/.test(userGroup) ? 1.15 : 1;
-  const hotspotUnits = exposureCount * severityFactor * recencyFactor * vulnerableFactor;
-
-  return {
-    severe: severityFactor >= 1.45,
-    hotspotUnits
-  };
-}
-
-function summarizeCrashHotspots(crashHotspots, coords) {
-  const nearby = pointsNearRoute(crashHotspots, coords, 45);
-  let severeCrashHotspotCount = 0;
-  let crashRiskUnits = 0;
-
-  for (const entry of nearby) {
-    const summary = classifyCrashHotspot(entry.item);
-    if (summary.severe) severeCrashHotspotCount++;
-    crashRiskUnits += summary.hotspotUnits;
-  }
-
-  return {
-    crashHotspotsNear: nearby.map(entry => entry.item),
-    crashHotspotCount: nearby.length,
-    severeCrashHotspotCount,
-    crashRiskUnits,
-    nearestCrashMeters: nearestPointDistance(crashHotspots, coords)
-  };
-}
-
 function summarizeDecisionPoints(route) {
   const steps = Array.isArray(route?.steps) ? route.steps : [];
   let decisionPoints = 0;
@@ -732,8 +639,6 @@ function summarizeEvidence(signals, summary) {
     summary.seatingCount +
     summary.accessibleStationCount +
     summary.inaccessibleStationCount +
-    summary.crashHotspotCount +
-    Math.round(summary.crashRiskMeters / 160) +
     summary.decisionPoints +
     summary.complexDecisionPoints +
     Math.round(summary.busyMeters / 180) +
@@ -790,8 +695,6 @@ function computeIntrinsicScore(signals, summary) {
     summary.inaccessibleStationCount * 1.2 +
     summary.roughMeters / 65 +
     summary.steepMeters / 50 +
-    summary.crashRiskMeters / 100 +
-    summary.crashRiskUnits * 0.95 +
     summary.reportIssueUnits * 1.15 +
     summary.decisionWeight * 0.25 +
     summary.complexDecisionPoints * 0.9;
@@ -876,15 +779,11 @@ export function analyzeRoute(route, accData) {
   const seating = mergeFeatureArrays(accData, ['seating', 'restPoints', 'benches', 'seatingNodes']);
   const stationAccess = mergeFeatureArrays(accData, ['stations', 'stationAccess', 'stationAccessibility', 'stationEntrances']);
   const reports = mergeFeatureArrays(accData, ['communityReports', 'issueReports', 'reports']);
-  const crashHotspots = mergeFeatureArrays(accData, ['crashHotspots', 'collisionHotspots', 'crashRiskNodes', 'crashPoints']);
-  const crashRiskCorridors = mergeFeatureArrays(accData, ['crashRiskWays', 'collisionRiskWays', 'crashRiskSegments', 'collisionRiskSegments']);
 
   const toiletSummary = summarizeToilets(toilets, route.coords);
   const seatingSummary = summarizeSeating(seating, route.coords);
   const stationSummary = summarizeStations(stationAccess, route.coords);
   const reportSummary = summarizeReports(reports, route.coords);
-  const crashSummary = summarizeCrashHotspots(crashHotspots, route.coords);
-  const crashRiskMeters = metersOnRouteAlongWays(crashRiskCorridors, route.coords, 12);
   const complexityFromRoute = summarizeDecisionPoints(route);
 
   const shopCount = shopsNearRoute(accData?.shopPois || [], route.coords);
@@ -912,8 +811,6 @@ export function analyzeRoute(route, accData) {
     smoothMeters,
     steepMeters,
     gentleMeters,
-    crashRiskMeters,
-    crashRiskUnits: crashSummary.crashRiskUnits + (crashRiskMeters / 75),
     shopCount,
     shopDensityPer100m,
     residentialMeters,
@@ -928,7 +825,6 @@ export function analyzeRoute(route, accData) {
     ...toiletSummary,
     ...seatingSummary,
     ...stationSummary,
-    ...crashSummary,
     ...reportSummary
   };
 
@@ -953,7 +849,6 @@ export function analyzeRoute(route, accData) {
     smoothMeters,
     steepMeters,
     gentleMeters,
-    crashRiskMeters,
     shopCount,
     shopDensityPer100m,
     residentialMeters,
@@ -980,11 +875,6 @@ export function analyzeRoute(route, accData) {
     inaccessibleStationCount: stationSummary.inaccessibleStationCount,
     unknownStationCount: stationSummary.unknownStationCount,
     nearestStationMeters: stationSummary.nearestStationMeters,
-    crashHotspotsNear: crashSummary.crashHotspotsNear,
-    crashHotspotCount: crashSummary.crashHotspotCount,
-    severeCrashHotspotCount: crashSummary.severeCrashHotspotCount,
-    crashRiskUnits: crashSummary.crashRiskUnits + (crashRiskMeters / 75),
-    nearestCrashMeters: crashSummary.nearestCrashMeters,
     communityReportsNear: reportSummary.communityReportsNear,
     reportCount: reportSummary.reportCount,
     verifiedReportCount: reportSummary.verifiedReportCount,
@@ -1030,7 +920,6 @@ export function scoreRouteAnalysis(analysis, weights) {
   penalty -= analysis.gentleMeters * PENALTIES.gentle_per_meter_bonus * (weights.gentle_slope || 0);
   penalty += analysis.reportIssueUnits * PENALTIES.report_issue_unit * (weights.verified_reports || 0);
   penalty -= analysis.reportClearUnits * PENALTIES.report_clear_bonus * (weights.verified_reports || 0);
-  penalty += analysis.crashRiskUnits * PENALTIES.crash_risk_unit * (weights.avoid_crash || 0);
   penalty += analysis.decisionWeight * PENALTIES.decision_point_penalty * (weights.simple_navigation || 0);
   penalty += analysis.complexDecisionPoints * PENALTIES.complex_junction_penalty * (weights.simple_navigation || 0);
 
