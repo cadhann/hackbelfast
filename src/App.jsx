@@ -391,7 +391,7 @@ export default function App() {
     setError(null); setWarning(null);
   };
 
-  const computeRoute = async (startPoint, endPoint) => {
+  const computeRoute = async (startPoint, endPoint, { force = false } = {}) => {
     if (!startPoint || !endPoint) return;
     if (samePoint(startPoint, endPoint)) {
       rejectSamePoint();
@@ -402,7 +402,7 @@ export default function App() {
     const reqId = ++requestIdRef.current;
     const key = cacheKey(startPoint, endPoint);
 
-    const cached = getCached(key);
+    const cached = !force && getCached(key);
     if (cached) {
       setLoading(false);
       setRoutes(cached.routes);
@@ -776,6 +776,19 @@ export default function App() {
       </div>
 
       <div className="fab-stack">
+        {/* Recalculate — refetch routes ignoring cache */}
+        {start && end && !navActive && (
+          <button
+            type="button"
+            className="fab"
+            onClick={() => computeRoute(start, end, { force: true })}
+            disabled={loading}
+            aria-label="Recalculate route"
+            title="Recalculate"
+          >
+            <span aria-hidden="true">↻</span>
+          </button>
+        )}
         {/* Start Navigation — visible when a route is ready and not yet navigating */}
         {chosen && !navActive && (
           <button
