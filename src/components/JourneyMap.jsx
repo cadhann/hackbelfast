@@ -283,13 +283,12 @@ export default function JourneyMap({ hint, loading, start, end, scored, chosen, 
             />
           </>
         )}
-        {/* Always-visible hazard indicators: crossings, raised kerbs, stairs */}
-        {chosen && crossingNodes.map(el => <HazardMarker key={`crossing-${el.id}`} el={el} kind="crossing" />)}
-        {chosen && raisedKerbNodes.map(el => <HazardMarker key={`kerb-${el.id}`} el={el} kind="kerb" />)}
-        {chosen && stepsNodes.map(el => <HazardMarker key={`steps-${el.id}`} el={el} kind="steps" />)}
-        {/* Routing analysis circles — toggled via the Analysis button (default off) */}
+        {/* All map icons (hazards, analysis circles, support) — toggled via the Analysis button (default off) */}
+        {showAnalysis && chosen && crossingNodes.map(el => <HazardMarker key={`crossing-${el.id}`} el={el} kind="crossing" />)}
+        {showAnalysis && chosen && raisedKerbNodes.map(el => <HazardMarker key={`kerb-${el.id}`} el={el} kind="kerb" />)}
+        {showAnalysis && chosen && stepsNodes.map(el => <HazardMarker key={`steps-${el.id}`} el={el} kind="steps" />)}
         {showAnalysis && chosen && chosen.near.map(el => <FeatureMarker key={el.id} el={el} />)}
-        {supportMarkers.map(item => (
+        {showAnalysis && supportMarkers.map(item => (
           <SupportMarker key={`${item.kind}-${item.feature.id}`} feature={item} kind={item.kind} />
         ))}
         {/* Live GPS position — outer ring + inner dot */}
